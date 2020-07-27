@@ -4,7 +4,12 @@
 
 int main(int agrc, char* argv[])
 {
-	session_t sess = { -1 };
+	if(getuid() != 0)
+	{
+		perror("MiniFTP 1.0 : It must be started by root.\n");
+		exit(EXIT_FAILURE);
+	}
+	session_t sess = { -1, -1, "", "", "" };
 
 	int lst_sock = tcp_server("192.168.0.128", 9188); 
 
@@ -28,7 +33,7 @@ int main(int agrc, char* argv[])
 		
 		if(pid == 0)
 		{
-			//子进程
+			//chlid
 			close(lst_sock);
 			//子进程创建会话
 			sess.ctl_fd = new_sock;
@@ -37,7 +42,7 @@ int main(int agrc, char* argv[])
 		}
 		else
 		{
-			//父进程
+			//parent
 			close(new_sock);
 		}
 	}

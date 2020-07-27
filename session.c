@@ -13,12 +13,28 @@ void session_start(session_t* sess)
 
 	if(pid == 0)
 	{
-		//ftp服务进程
+		//ftp server process
 		handle_child(sess);
 	}
 	else
 	{
-		//nobody进程
+		//nobody process
+
+		//Change the process from root to nobody
+		struct passwd* pw = getpwnam("nobody");
+		if(pw == NULL)
+		{
+			ERR_EXIT("getpwnam");
+		}
+		if(setegid(pw->pw_gid) < 0)
+		{
+			ERR_EXIT("setegid");
+		}
+		if(seteuid(pw->pw_uid) < 0)
+		{
+			ERR_EXIT("seteuid");
+		}
+		
 		handle_parent(sess);
 	}
 }

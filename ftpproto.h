@@ -3,8 +3,10 @@
 
 #include"common.h"
 #include"session.h"
+#include"ftpcodes.h"
+#include"str.h"
 
-void ftp_reply(session_t* sess, int num, char* msg);
+//void ftp_reply(session_t* sess, int num, char* msg);
 void handle_child(session_t* sess);
 
 #endif /* _FTPPROTE_H_ */

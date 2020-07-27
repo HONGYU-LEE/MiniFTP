@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -g
-OBJS = sysutil.o session.o ftpproto.o privparent.o MiniFTP.o
-LIBS = 
+OBJS = sysutil.o session.o ftpproto.o privparent.o MiniFTP.o str.o
+LIBS = -lcrypt
 BIN  = MiniFTP
 
 $(BIN):$(OBJS)
