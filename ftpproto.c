@@ -16,7 +16,9 @@ typedef struct ftpcmd
 }ftpcmd_t;
 
 static void do_user(session_t *sess); 
-static void do_pass(session_t *sess); 
+static void do_pass(session_t *sess);
+static void do_syst(session_t *sess); 
+/*
 static void do_cwd(session_t *sess); 
 static void do_cdup(session_t *sess); 
 static void do_quit(session_t *sess); 
@@ -39,18 +41,18 @@ static void do_dele(session_t *sess);
 static void do_rnfr(session_t *sess); 
 static void do_rnto(session_t *sess); 
 static void do_site(session_t *sess); 
-static void do_syst(session_t *sess); 
 static void do_feat(session_t *sess); 
 static void do_size(session_t *sess); 
 static void do_stat(session_t *sess); 
 static void do_noop(session_t *sess); 
 static void do_help(session_t *sess);
-
+*/
 static ftpcmd_t ctl_cmds[] = 
 {
-	/* 访问控制命令 */
+	//访问控制命令
 	{"USER", do_user },
 	{"PASS", do_pass },
+	/*
 	{"CWD" , do_cwd },
 	{"XCWD", do_cwd },
 	{"CDUP", do_cdup },
@@ -60,14 +62,14 @@ static ftpcmd_t ctl_cmds[] =
 	{"SMNT", NULL },
 	{"REIN", NULL },
 
-	/* 传输参数命令 */
+	//传输参数命令 
 	{"PORT", do_port },
 	{"PASV", do_pasv },
 	{"TYPE", do_type },
-	{"STRU", /*do_stru*/NULL },
-	{"MODE", /*do_mode*/NULL },
+	//{"STRU", do_struNULL },
+	//{"MODE", do_modeNULL },
 
-	/* 服务命令 */
+	//服务命令
 	{"RETR", do_retr },
 	{"STOR", do_stor },
 	{"APPE", do_appe },
@@ -94,7 +96,7 @@ static ftpcmd_t ctl_cmds[] =
 	{"HELP", do_help },
 	{"STOU", NULL },
 	{"ALLO", NULL }
-
+	*/
 };
 
 void handle_child(session_t* sess)
