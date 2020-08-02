@@ -9,7 +9,14 @@ int main(int agrc, char* argv[])
 		perror("MiniFTP 1.0 : It must be started by root.\n");
 		exit(EXIT_FAILURE);
 	}
-	session_t sess = { -1, -1, "", "", "" };
+	session_t sess = {  
+						/* control connection*/
+						-1, -1, "", "", "",
+						/* data connection */
+						NULL, -1, 
+						/* protocol status */
+						1,		
+					 };
 
 	int lst_sock = tcp_server("192.168.0.128", 9188); 
 

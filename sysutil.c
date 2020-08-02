@@ -32,3 +32,15 @@ int tcp_server(const char* ip, unsigned short port)
 
 	return lst_fd;
 }
+
+int tcp_client()
+{
+	int sock;
+
+	if((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	{
+		ERR_EXIT("tcp_client");
+	}
+
+	return sock;
+}

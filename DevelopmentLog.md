@@ -2,7 +2,7 @@
 
 [TOC]
 
-# 2020_7_26
+# 2020_07_26
 
 
 
@@ -263,7 +263,7 @@
 
 
 
-# 2020_7_27
+# 2020_07_27
 
 ## 一、命令解析与映射
 
@@ -643,3 +643,83 @@
 > 
 
 -----------------------------------
+
+# 2020_08_02
+
+## 一、命令实现（SYST、FEAT、PWD、TYPE）
+
+>## 1、 实现SYST命令
+>
+>显示远程主机的操作系统类型
+>
+>```c
+>static void do_syst(session_t* sess)
+>{
+>	ftp_reply(sess, FTP_SYSTOK, "UNIX Type: L8");
+>}
+>```
+>
+>### 2、实现FEAT命令
+>
+>请求FTP服务器列出它的所有的扩展命令与扩展功能
+>
+>```c
+>static void do_feat(session_t *sess)
+>{
+>	send(sess->ctl_fd, "211-Features:\r\n", strlen("211-Features:\r\n"), 0);
+>	send(sess->ctl_fd, " EPRT\r\n", strlen(" EPRT\r\n"), 0);
+>	send(sess->ctl_fd, " EPSV\r\n", strlen(" EPSV\r\n"), 0);
+>	send(sess->ctl_fd, " MDTM\r\n", strlen(" MDTM\r\n"), 0);
+>	send(sess->ctl_fd, " PASV\r\n", strlen(" PASV\r\n"), 0);
+>	send(sess->ctl_fd, " REST STREAM\r\n", strlen(" REST STREAM\r\n"), 0);
+>	send(sess->ctl_fd, " SIZE\r\n", strlen(" SIZE\r\n"), 0);
+>	send(sess->ctl_fd, " TVFS\r\n", strlen(" TVFS\r\n"), 0);
+>	send(sess->ctl_fd, " UTF8\r\n", strlen(" UTF8\r\n"), 0);
+>	send(sess->ctl_fd, "211 End\r\n", strlen("211 End\r\n"), 0);
+>}
+>```
+>
+>### 3、实现PWD命令
+>
+>显示远程主机的当前工作目录
+>
+>```c
+>static void do_pwd(session_t *sess)
+>{
+>	char buf[MAX_BUFFER_SIZE] = { 0 };
+>	getcwd(buf, MAX_BUFFER_SIZE); // /home/user
+>	
+>	char msg[MAX_BUFFER_SIZE] = { 0 };
+>	sprintf(msg, "\"%s\" is the current directory", buf); // "/home/user"
+>
+>	ftp_reply(sess, FTP_PWDOK, msg);
+>}
+>```
+>
+>### 4、实现TYPE命令
+>
+>设置文件传输类型，A为ASCII传输，I为二进制传输，默认为ASCII
+>
+>```c
+>static void do_type(session_t *sess)
+>{
+>	if(strcmp(sess->arg, "A") == 0)
+>	{
+>		sess->is_ascii = 1;
+>		ftp_reply(sess, FTP_TYPEOK, "Switching to ASCII mode.");
+>	}
+>	else if(strcmp(sess->arg, "I") == 0)
+>	{
+>		sess->is_ascii = 0;
+>		ftp_reply(sess, FTP_TYPEOK, "Switching to Binary mode.");
+>	}
+>	else
+>	{
+>		ftp_reply(sess, FTP_BADCMD, "Unrecognised TYPE command.");
+>	}
+>}
+>```
+>
+>
+
+---------------
