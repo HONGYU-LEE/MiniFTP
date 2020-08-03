@@ -44,3 +44,71 @@ int tcp_client()
 
 	return sock;
 }
+
+const char* statbuf_get_perms(const struct stat *sbuf)
+{
+	//- --- --- ---
+	static char perms[] = "----------";
+	mode_t mode = sbuf->st_mode;
+
+	switch(mode & S_IFMT)
+	{
+		//file properties
+		case S_IFREG:
+			perms[0] = '-';
+			break;
+		case S_IFIFO:
+			perms[0] = 'p';
+			break;
+		case S_IFDIR:
+			perms[0] = 'd';
+			break;
+		case S_IFCHR:
+			perms[0] = 'c';
+			break;
+		case S_IFBLK:
+			perms[0] = 'b';
+			break;
+		case S_IFLNK:
+			perms[0] = 'l';
+			break;
+		case S_IFSOCK:
+			perms[0] = 's';
+			break;
+	}
+		//permission
+	if(mode & S_IRUSR)
+		perms[1] = 'r';
+	if(mode & S_IWUSR)
+		perms[2] = 'w';
+	if(mode & S_IXUSR)
+		perms[3] = 'x';
+		
+	if(mode & S_IRGRP)
+		perms[4] = 'r';
+	if(mode & S_IWGRP)
+		perms[5] = 'w';	
+	if(mode & S_IXGRP)
+		perms[6] = 'x';
+
+	if(mode & S_IROTH)
+		perms[7] = 'r';
+	if(mode & S_IWOTH)
+		perms[8] = 'w';
+	if(mode & S_IXOTH)
+		perms[9] = 'x';
+
+	return perms;
+}
+
+const char* statbuf_get_date(const struct stat *sbuf)
+{
+	static char dates[64] = { 0 };
+
+	time_t file_time = sbuf->st_mtime;
+	struct tm* ptm = localtime(&file_time);
+
+	strftime(dates, 64, "%b %e %H:%M", ptm);
+
+	return dates;
+}

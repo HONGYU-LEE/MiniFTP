@@ -15,10 +15,11 @@ typedef struct session
 	/* data connection */
 	struct sockaddr_in* port_addr;
 	int data_fd;
-
+	int pasv_lst_fd;
 
 	/* protocol status */
 	int is_ascii;
+	
 }session_t;
 
 void session_start(session_t* sess);

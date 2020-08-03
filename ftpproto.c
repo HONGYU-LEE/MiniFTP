@@ -263,14 +263,14 @@ static void do_port(session_t *sess)
 	
 	sess->port_addr->sin_family = AF_INET;
 	//set ip address
-	p = (unsigned char*)&sess->port_addr->sin_addr;
+	unsigned char* p = (unsigned char*)&sess->port_addr->sin_addr;
 	p[0] = addr[0];
 	p[1] = addr[1];
 	p[2] = addr[2];
 	p[3] = addr[3];
 
 	//set port
-	unsigned char* p = (unsigned char*)&sess->port_addr->sin_port;
+	p = (unsigned char*)&sess->port_addr->sin_port;
 	p[0] = addr[4];
 	p[1] = addr[5];
 
@@ -279,10 +279,28 @@ static void do_port(session_t *sess)
 
 static void do_pasv(session_t *sess)
 {
-	
+	char ip[16] = "192.168.0.128"; //server ip address
+	sess->pasv_lst_fd = tcp_server(ip, 0); //automatic allocation port
+
+	struct sockaddr_in address;
+	socklen_t socklen = sizeof(struct sockaddr);
+
+	if(getsockname(sess->pasv_lst_fd, (struct sockaddr*)&address, &socklen) < 0)
+	{
+		ERR_EXIT("getsockname");
+	}
+
+	unsigned short port = ntohs(address.sin_port);
+	int addr[4] = { 0 };
+	sscanf(ip, "%u.%u.%u.%u", &addr[0], &addr[1], &addr[2], &addr[3]);
+
+	char buf[MAX_BUFFER_SIZE] = { 0 };
+	sprintf(buf, "Entering Passive Mode (%u,%u,%u,%u,%u,%u).", addr[0], addr[1], addr[2], addr[3], port >> 8, port & 0x00ff);
+
+	ftp_reply(sess, FTP_PASVOK, buf);
 }
 
-int port_action(session_t* sess)
+int port_action(const session_t* sess)
 {
 	if(sess->port_addr)
 	{
@@ -292,9 +310,19 @@ int port_action(session_t* sess)
 	return 0;
 }
 
+int pasv_action(const session_t* sess)
+{
+	if(sess->pasv_lst_fd != -1)
+	{
+		return 1;
+	}
+
+	return 0;
+}
+
 int get_transfer_fd(session_t *sess)
 {
-	if(!port_action(sess) && !port_action(sess))
+	if(!port_action(sess) && !pasv_action(sess))
 	{
 		ftp_reply(sess, FTP_BADSENDCONN, "Use PORT or PASV first");
 		return 0;
@@ -306,7 +334,7 @@ int get_transfer_fd(session_t *sess)
 	{
 		int sock = tcp_client();
 
-		if(connect(sock, (struct sockaddr*)&sess->port_addr, sizeof(struct sockaddr)) < 0)
+		if(connect(sock, (struct sockaddr*)sess->port_addr, sizeof(struct sockaddr)) < 0)
 		{
 			ret = 0;
 		}
@@ -316,12 +344,20 @@ int get_transfer_fd(session_t *sess)
 		}
 	}
 
-	/*
 	if(pasv_action(sess))
 	{
-		
+		int sock = accept(sess->pasv_lst_fd, NULL, NULL);
+		if(sock < 0)
+		{
+			ret = 0;
+		}
+		else
+		{
+			close(sess->pasv_lst_fd);
+			sess->pasv_lst_fd = -1;
+			sess->data_fd = sock;
+		}
 	}
-	*/
 
 	if(sess->port_addr)
 	{
@@ -334,12 +370,56 @@ int get_transfer_fd(session_t *sess)
 
 static void list_common(session_t *sess)
 {
+	//open working directory
+	DIR* dir = opendir(".");
+	if(dir == NULL)
+	{
+		return;
+	}
+
+	//drwxr-xr-x    2 1000     1000            6 Mar 03 09:42 Desktop
+	char buf[MAX_BUFFER_SIZE] = { 0 };
+	
+	struct stat sbuf;
+	struct dirent* dt;
+	
+	while((dt = readdir(dir)) != NULL)
+	{
+		if(stat(dt->d_name, &sbuf) < 0)
+		{
+			continue;
+		}
+		//ignore hidden files
+		if(dt->d_name[0] == '.')
+		{
+			continue;
+		}
+
+		int offset = 0;
+		memset(buf, MAX_BUFFER_SIZE, 0);
+
+		//add permission information : drwxr-xr-x
+		const char* perms = statbuf_get_perms(&sbuf);
+		offset += sprintf(buf, "%s", perms);
 		
+		//add file information : 2 1000     1000            6
+		offset += sprintf(buf + offset, "%3d %-8d %-8d %8u", sbuf.st_nlink, sbuf.st_uid, sbuf.st_gid, sbuf.st_size);
+		
+		//add data information : 6 Mar 03 09:42
+		const char* date = statbuf_get_date(&sbuf);
+		offset += sprintf(buf + offset, " %s ", date);
+
+		//add dir information : Desktop
+		sprintf(buf + offset, "%s\r\n", dt->d_name);
+
+		send(sess->data_fd, buf, strlen(buf), 0);
+	}
 }
+
 static void do_list(session_t *sess)
 {
 	//1.establish data connection
-	if(!get_transfer_fd(sess))
+	if(get_transfer_fd(sess) == 0)
 	{
 		return;
 	}

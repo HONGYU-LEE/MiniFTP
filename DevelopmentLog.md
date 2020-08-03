@@ -1,4 +1,4 @@
-<h1 align=center> MiniFtp 项目 开发日志 </h1>
+<h1 align=center> MiniFTP 项目 开发日志 </h1>
 
 [TOC]
 
@@ -723,3 +723,312 @@
 >
 
 ---------------
+
+# 2020_08_03
+
+## 一、实现主动模式和被动模式
+
+>### session增加新成员
+>
+>```c
+>typedef struct session
+>{
+>	/* control connection*/
+>	uid_t uid;
+>	int ctl_fd;
+>	char cmdline[MAX_COMMAND_LINE];
+>	char cmd[MAX_COMMAND];
+>	char arg[MAX_ARG];
+>
+>	/* data connection */
+>	struct sockaddr_in* port_addr;
+>	int data_fd;
+>	int pasv_lst_fd;
+>
+>	/* protocol status */
+>	int is_ascii;
+>	
+>}session_t;
+>```
+>
+>
+>
+>
+>
+>### 实现PORT命令（主动模式）
+>
+>```c
+>static void do_port(session_t *sess)
+>{
+>	//resolving ip address : PORT 192,168,1,128,5,35
+>	unsigned int addr[6] = { 0 };
+>	sscanf(sess->arg, "%u,%u,%u,%u,%u,%u", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]);
+>
+>	sess->port_addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+>	
+>	sess->port_addr->sin_family = AF_INET;
+>	//set ip address
+>	unsigned char* p = (unsigned char*)&sess->port_addr->sin_addr;
+>	p[0] = addr[0];
+>	p[1] = addr[1];
+>	p[2] = addr[2];
+>	p[3] = addr[3];
+>
+>	//set port
+>	p = (unsigned char*)&sess->port_addr->sin_port;
+>	p[0] = addr[4];
+>	p[1] = addr[5];
+>
+>	ftp_reply(sess, FTP_PORTOK, "PORT command successful. Consider using PASV.");
+>}
+>
+>int port_action(const session_t* sess)
+>{
+>	if(sess->port_addr)
+>	{
+>		return 1;
+>	}
+>
+>	return 0;
+>}
+>```
+>
+>### 实现PASV命令（被动模式）
+>
+>```c
+>static void do_pasv(session_t *sess)
+>{
+>	char ip[16] = "192.168.0.128"; //server ip address
+>	sess->pasv_lst_fd = tcp_server(ip, 0); //automatic allocation port
+>
+>	struct sockaddr_in address;
+>	socklen_t socklen = sizeof(struct sockaddr);
+>
+>	if(getsockname(sess->pasv_lst_fd, (struct sockaddr*)&address, &socklen) < 0)
+>	{
+>		ERR_EXIT("getsockname");
+>	}
+>
+>	unsigned short port = ntohs(address.sin_port);
+>	int addr[4] = { 0 };
+>	sscanf(ip, "%u.%u.%u.%u", &addr[0], &addr[1], &addr[2], &addr[3]);
+>
+>	char buf[MAX_BUFFER_SIZE] = { 0 };
+>	sprintf(buf, "Entering Passive Mode (%u,%u,%u,%u,%u,%u).", addr[0], addr[1], addr[2], addr[3], port >> 8, port & 0x00ff);
+>
+>	ftp_reply(sess, FTP_PASVOK, buf);
+>}
+>
+>int pasv_action(const session_t* sess)
+>{
+>	if(sess->pasv_lst_fd != -1)
+>	{
+>		return 1;
+>	}
+>
+>	return 0;
+>}
+>```
+>
+>### 根据工作模式，获取数据连接描述符
+>
+>````c
+>int get_transfer_fd(session_t *sess)
+>{
+>	if(!port_action(sess) && !pasv_action(sess))
+>	{
+>		ftp_reply(sess, FTP_BADSENDCONN, "Use PORT or PASV first");
+>		return 0;
+>	}
+>	
+>	int ret = 1;
+>	
+>	if(port_action(sess))
+>	{
+>		int sock = tcp_client();
+>
+>		if(connect(sock, (struct sockaddr*)sess->port_addr, sizeof(struct sockaddr)) < 0)
+>		{
+>			ret = 0;
+>		}
+>		else
+>		{
+>			sess->data_fd = sock;
+>		}
+>	}
+>
+>	if(pasv_action(sess))
+>	{
+>		int sock = accept(sess->pasv_lst_fd, NULL, NULL);
+>		if(sock < 0)
+>		{
+>			ret = 0;
+>		}
+>		else
+>		{
+>			close(sess->pasv_lst_fd);
+>			sess->pasv_lst_fd = -1;
+>			sess->data_fd = sock;
+>		}
+>	}
+>
+>	if(sess->port_addr)
+>	{
+>		free(sess->port_addr);
+>		sess->port_addr = NULL;
+>	}
+>
+>	return ret;
+>}
+>````
+
+## 二、实现LIST功能（显示文件列表）
+
+>```c
+>static void do_list(session_t *sess)
+>{
+>	//1.establish data connection
+>	if(get_transfer_fd(sess) == 0)
+>	{
+>		return;
+>	}
+>
+>	//2.reply code-150
+>	ftp_reply(sess, FTP_DATACONN, "Here comes the directory listing.");
+>
+>	//3.show file list
+>	list_common(sess);
+>
+>	//4.close connection
+>	close(sess->data_fd);
+>	sess->data_fd = -1;
+>
+>	//5.reply code-226
+>	ftp_reply(sess, FTP_TRANSFEROK, "Directory send OK.");
+>}
+>
+>//列表实现功能
+>static void list_common(session_t *sess)
+>{
+>	//open working directory
+>	DIR* dir = opendir(".");
+>	if(dir == NULL)
+>	{
+>		return;
+>	}
+>
+>	//drwxr-xr-x    2 1000     1000            6 Mar 03 09:42 Desktop
+>	char buf[MAX_BUFFER_SIZE] = { 0 };
+>	
+>	struct stat sbuf;
+>	struct dirent* dt;
+>	
+>	while((dt = readdir(dir)) != NULL)
+>	{
+>		if(stat(dt->d_name, &sbuf) < 0)
+>		{
+>			continue;
+>		}
+>		//ignore hidden files
+>		if(dt->d_name[0] == '.')
+>		{
+>			continue;
+>		}
+>
+>		int offset = 0;
+>		memset(buf, MAX_BUFFER_SIZE, 0);
+>
+>		//add permission information : drwxr-xr-x
+>		const char* perms = statbuf_get_perms(&sbuf);
+>		offset += sprintf(buf, "%s", perms);
+>		
+>		//add file information : 2 1000     1000            6
+>		offset += sprintf(buf + offset, "%3d %-8d %-8d %8u", sbuf.st_nlink, sbuf.st_uid, sbuf.st_gid, sbuf.st_size);
+>		
+>		//add data information : 6 Mar 03 09:42
+>		const char* date = statbuf_get_date(&sbuf);
+>		offset += sprintf(buf + offset, " %s ", date);
+>
+>		//add dir information : Desktop
+>		sprintf(buf + offset, "%s\r\n", dt->d_name);
+>
+>		send(sess->data_fd, buf, strlen(buf), 0);
+>	}
+>}
+>```
+>
+>### sysutil模块新增文件权限信息和日期信息获取
+>
+>```c
+>const char* statbuf_get_perms(const struct stat *sbuf)
+>{
+>	//- --- --- ---
+>	static char perms[] = "----------";
+>	mode_t mode = sbuf->st_mode;
+>
+>	switch(mode & S_IFMT)
+>	{
+>		//file properties
+>		case S_IFREG:
+>			perms[0] = '-';
+>			break;
+>		case S_IFIFO:
+>			perms[0] = 'p';
+>			break;
+>		case S_IFDIR:
+>			perms[0] = 'd';
+>			break;
+>		case S_IFCHR:
+>			perms[0] = 'c';
+>			break;
+>		case S_IFBLK:
+>			perms[0] = 'b';
+>			break;
+>		case S_IFLNK:
+>			perms[0] = 'l';
+>			break;
+>		case S_IFSOCK:
+>			perms[0] = 's';
+>			break;
+>	}
+>    
+>	//permission
+>	if(mode & S_IRUSR)
+>		perms[1] = 'r';
+>	if(mode & S_IWUSR)
+>		perms[2] = 'w';
+>	if(mode & S_IXUSR)
+>		perms[3] = 'x';
+>		
+>	if(mode & S_IRGRP)
+>		perms[4] = 'r';
+>	if(mode & S_IWGRP)
+>		perms[5] = 'w';	
+>	if(mode & S_IXGRP)
+>		perms[6] = 'x';
+>
+>	if(mode & S_IROTH)
+>		perms[7] = 'r';
+>	if(mode & S_IWOTH)
+>		perms[8] = 'w';
+>	if(mode & S_IXOTH)
+>		perms[9] = 'x';
+>
+>	return perms;
+>}
+>
+>const char* statbuf_get_date(const struct stat *sbuf)
+>{
+>	static char dates[64] = { 0 };
+>
+>	time_t file_time = sbuf->st_mtime;
+>	struct tm* ptm = localtime(&file_time);
+>
+>	strftime(dates, 64, "%b %e %H:%M", ptm);
+>
+>	return dates;
+>}
+>```
+
+---------------------------
+
