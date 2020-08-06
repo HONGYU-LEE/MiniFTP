@@ -1,5 +1,4 @@
 #include"ftpproto.h"
-#include"sysutil.h"
 
 void ftp_reply(session_t* sess, int state, char* msg)
 {
@@ -125,7 +124,7 @@ void handle_child(session_t* sess)
 		ret = recv(sess->ctl_fd, sess->cmdline, MAX_COMMAND_LINE, 0);
 		if(ret < 0)
 		{
-			ERR_EXIT("recv");
+			ERR_EXIT("recv error.");
 		}
 		else if(ret == 0)
 		{
@@ -175,7 +174,7 @@ static void do_user(session_t* sess)
 
 static void do_pass(session_t* sess)
 {
-	//Authentication, confirm account and password
+	//鉴权,确认用户和密码是否正确
 	struct passwd *pwd = getpwuid(sess->uid);
 
 	if(pwd == NULL)
@@ -255,21 +254,21 @@ static void do_type(session_t *sess)
 
 static void do_port(session_t *sess)
 {
-	//resolving ip address : PORT 192,168,1,128,5,35
+	//解析IP地址 例如: PORT 192,168,1,128,5,35
 	unsigned int addr[6] = { 0 };
 	sscanf(sess->arg, "%u,%u,%u,%u,%u,%u", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]);
 
 	sess->port_addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
 	
 	sess->port_addr->sin_family = AF_INET;
-	//set ip address
+	//设置IP地址
 	unsigned char* p = (unsigned char*)&sess->port_addr->sin_addr;
 	p[0] = addr[0];
 	p[1] = addr[1];
 	p[2] = addr[2];
 	p[3] = addr[3];
 
-	//set port
+	//设置端口号
 	p = (unsigned char*)&sess->port_addr->sin_port;
 	p[0] = addr[4];
 	p[1] = addr[5];
@@ -279,8 +278,8 @@ static void do_port(session_t *sess)
 
 static void do_pasv(session_t *sess)
 {
-	char ip[16] = "192.168.0.128"; //server ip address
-	sess->pasv_lst_fd = tcp_server(ip, 0); //automatic allocation port
+	char ip[16] = "192.168.0.128"; //服务器IP地址
+	sess->pasv_lst_fd = tcp_server(ip, 0); //端口号给0,会自动分配端口号
 
 	struct sockaddr_in address;
 	socklen_t socklen = sizeof(struct sockaddr);
@@ -370,7 +369,7 @@ int get_transfer_fd(session_t *sess)
 
 static void list_common(session_t *sess)
 {
-	//open working directory
+	//打开工作目录
 	DIR* dir = opendir(".");
 	if(dir == NULL)
 	{
@@ -389,7 +388,7 @@ static void list_common(session_t *sess)
 		{
 			continue;
 		}
-		//ignore hidden files
+		//忽略隐藏的文件
 		if(dt->d_name[0] == '.')
 		{
 			continue;
@@ -398,18 +397,18 @@ static void list_common(session_t *sess)
 		int offset = 0;
 		memset(buf, MAX_BUFFER_SIZE, 0);
 
-		//add permission information : drwxr-xr-x
+		//拼接权限信息 : drwxr-xr-x
 		const char* perms = statbuf_get_perms(&sbuf);
 		offset += sprintf(buf, "%s", perms);
 		
-		//add file information : 2 1000     1000            6
+		//拼接文件信息 : 2 1000     1000            6
 		offset += sprintf(buf + offset, "%3d %-8d %-8d %8u", sbuf.st_nlink, sbuf.st_uid, sbuf.st_gid, sbuf.st_size);
 		
-		//add data information : 6 Mar 03 09:42
+		//拼接日期信息 : 6 Mar 03 09:42
 		const char* date = statbuf_get_date(&sbuf);
 		offset += sprintf(buf + offset, " %s ", date);
 
-		//add dir information : Desktop
+		//拼接目录名 : Desktop
 		sprintf(buf + offset, "%s\r\n", dt->d_name);
 
 		send(sess->data_fd, buf, strlen(buf), 0);
@@ -418,22 +417,22 @@ static void list_common(session_t *sess)
 
 static void do_list(session_t *sess)
 {
-	//1.establish data connection
+	//1.建立数据连接
 	if(get_transfer_fd(sess) == 0)
 	{
 		return;
 	}
 
-	//2.reply code-150
+	//2.回复响应码150
 	ftp_reply(sess, FTP_DATACONN, "Here comes the directory listing.");
 
-	//3.show file list
+	//3.显示文件列表
 	list_common(sess);
 
-	//4.close connection
+	//4.关闭连接
 	close(sess->data_fd);
 	sess->data_fd = -1;
 
-	//5.reply code-226
+	//5.回复响应码226
 	ftp_reply(sess, FTP_TRANSFEROK, "Directory send OK.");
 }

@@ -5,21 +5,24 @@
 
 typedef struct session
 {
-	/* control connection*/
+	/* 控制连接 */
 	uid_t uid;
 	int ctl_fd;
 	char cmdline[MAX_COMMAND_LINE];
 	char cmd[MAX_COMMAND];
 	char arg[MAX_ARG];
 
-	/* data connection */
+	/* 数据连接 */
 	struct sockaddr_in* port_addr;
 	int data_fd;
 	int pasv_lst_fd;
 
-	/* protocol status */
+	/* 协议状态 */
 	int is_ascii;
 	
+	/* 父子进程通道 */
+	int parent_fd;
+	int child_fd;
 }session_t;
 
 void session_start(session_t* sess);

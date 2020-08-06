@@ -10,12 +10,14 @@ int main(int agrc, char* argv[])
 		exit(EXIT_FAILURE);
 	}
 	session_t sess = {  
-						/* control connection*/
+						/* 控制连接*/
 						-1, -1, "", "", "",
-						/* data connection */
+						/* 数据连接 */
 						NULL, -1, 
-						/* protocol status */
-						1,		
+						/* 协议状态 */
+						1,
+						/* 父子进程通道 */
+						-1, -1
 					 };
 
 	int lst_sock = tcp_server("192.168.0.128", 9188); 
@@ -28,14 +30,14 @@ int main(int agrc, char* argv[])
 	{
 		if((new_sock = accept(lst_sock, (struct sockaddr*)&addr, &addrlen)) < 0)
 		{
-			ERR_EXIT("accept");
+			ERR_EXIT("accept error.");
 		}
 
 		pid_t pid = fork();
 
 		if(pid == -1)
 		{
-			ERR_EXIT("fork");
+			ERR_EXIT("fork error.");
 		}
 		
 		if(pid == 0)

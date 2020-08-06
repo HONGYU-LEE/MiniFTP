@@ -17,7 +17,7 @@ void str_split(const char* str, char* cmd, char* arg, char split)
 
 	char* pos = strchr(str, split);
 
-	//only command
+	//当没有参数时
 	if(pos == NULL)
 	{
 		strcpy(cmd, str);

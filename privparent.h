@@ -3,6 +3,7 @@
 
 #include"common.h"
 #include"session.h"
+#include"privsock.h"
 
 void handle_parent(session_t* sess);
 

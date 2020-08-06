@@ -15,9 +15,9 @@
 #include<crypt.h>
 #include<shadow.h>
 
-#include <dirent.h>
+#include<dirent.h>
 
-#include <time.h>
+#include<time.h>
 #include<sys/stat.h>
 
 #define MAX_BUFFER_SIZE 1024
