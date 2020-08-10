@@ -20,6 +20,9 @@
 #include<time.h>
 #include<sys/stat.h>
 
+#include<linux/capability.h>
+#include<sys/syscall.h>
+
 #define MAX_BUFFER_SIZE 1024
 #define MAX_COMMAND_LINE 1024
 #define MAX_COMMAND 128

@@ -23,6 +23,7 @@ typedef struct session
 	/* 父子进程通道 */
 	int parent_fd;
 	int child_fd;
+
 }session_t;
 
 void session_start(session_t* sess);

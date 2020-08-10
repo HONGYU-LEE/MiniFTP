@@ -15,6 +15,7 @@ int tcp_server(const char* ip, unsigned short port)
 	addr.sin_addr.s_addr = inet_addr(ip);
 	
 	int on = 1;
+	//开启地址重用
 	if(setsockopt(lst_fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
 	{
 		ERR_EXIT("setsockopt error.");
@@ -33,13 +34,32 @@ int tcp_server(const char* ip, unsigned short port)
 	return lst_fd;
 }
 
-int tcp_client()
+int tcp_client(int port)
 {
 	int sock;
 
 	if((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		ERR_EXIT("tcp_client error.");
+	}
+
+	if(port > 0)
+	{
+		int on = 1;
+		if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
+		{
+			ERR_EXIT("setsockopt error.");
+		}
+
+		struct sockaddr_in addr;
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(port);
+		addr.sin_addr.s_addr = INADDR_ANY;	
+
+		if(bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+		{
+			ERR_EXIT("bind port 20");
+		}
 	}
 
 	return sock;

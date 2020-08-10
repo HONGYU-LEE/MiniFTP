@@ -16,27 +16,14 @@ void session_start(session_t* sess)
 	if(pid == 0)
 	{
 		//FTP服务进程
+		priv_sock_set_child_context(sess);
 		handle_child(sess);
 	}
 	else
 	{
 		//nobody进程
 
-		//将进程的实际用户从root改为nobody
-		struct passwd* pw = getpwnam("nobody");
-		if(pw == NULL)
-		{
-			ERR_EXIT("getpwnam error.");
-		}
-		if(setegid(pw->pw_gid) < 0)
-		{
-			ERR_EXIT("setegid error.");
-		}
-		if(seteuid(pw->pw_uid) < 0)
-		{
-			ERR_EXIT("seteuid error.");
-		}
-		
+		priv_sock_set_parent_context(sess);
 		handle_parent(sess);
 	}
 }

@@ -24,6 +24,9 @@ static void do_type(session_t *sess);
 static void do_port(session_t *sess); 
 static void do_pasv(session_t *sess); 
 static void do_list(session_t *sess); 
+
+int pasv_action(const session_t* sess);
+int port_action(const session_t* sess);
 /*
 static void do_cwd(session_t *sess); 
 static void do_cdup(session_t *sess); 
@@ -120,7 +123,7 @@ void handle_child(session_t* sess)
 		memset(sess->cmd, 0, MAX_COMMAND);
 		memset(sess->arg, 0, MAX_ARG);
 
-		//get command
+		//获取命令
 		ret = recv(sess->ctl_fd, sess->cmdline, MAX_COMMAND_LINE, 0);
 		if(ret < 0)
 		{
@@ -131,6 +134,7 @@ void handle_child(session_t* sess)
 			exit(EXIT_SUCCESS);
 		}
 
+		//解析出命令和参数
 		str_trim_crlf(sess->cmdline);
 		str_split(sess->cmdline, sess->cmd, sess->arg, ' ');
 		
@@ -276,20 +280,62 @@ static void do_port(session_t *sess)
 	ftp_reply(sess, FTP_PORTOK, "PORT command successful. Consider using PASV.");
 }
 
+
+int get_port_fd(session_t *sess)
+{
+	int ret = 1;
+	//ftp服务进程向nobody进程发起通信
+	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_GET_DATA_SOCK);
+
+	unsigned short port = ntohs(sess->port_addr->sin_port);
+	char* ip = inet_ntoa(sess->port_addr->sin_addr);
+
+	//将客户端的地址信息传递给nobody进程，让其进行主动连接
+	priv_sock_send_int(sess->child_fd, (int)port);
+	priv_sock_send_buf(sess->child_fd, ip, strlen(ip));
+
+	char res = priv_sock_recv_result(sess->child_fd);
+	if(res == PRIV_SOCK_RESULT_BAD)
+	{
+		ret = 0;
+	}
+	else if(res == PRIV_SOCK_RESULT_OK)
+	{
+		//建立连接成功，获取数据连接
+		sess->data_fd = priv_sock_recv_fd(sess->child_fd);
+	}
+
+	return ret;
+}
+
+int get_pasv_fd(session_t *sess)
+{
+	int ret = 1;
+
+	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_ACCEPT);
+
+	char res = priv_sock_recv_result(sess->child_fd);
+	if(res == PRIV_SOCK_RESULT_BAD)
+	{
+		ret = 0;
+	}
+	else if(res == PRIV_SOCK_RESULT_OK)
+	{
+		//建立连接成功，获取数据连接
+		sess->data_fd = priv_sock_recv_fd(sess->child_fd);
+	}
+
+	return ret;
+}
+
 static void do_pasv(session_t *sess)
 {
 	char ip[16] = "192.168.0.128"; //服务器IP地址
-	sess->pasv_lst_fd = tcp_server(ip, 0); //端口号给0,会自动分配端口号
 
-	struct sockaddr_in address;
-	socklen_t socklen = sizeof(struct sockaddr);
-
-	if(getsockname(sess->pasv_lst_fd, (struct sockaddr*)&address, &socklen) < 0)
-	{
-		ERR_EXIT("getsockname");
-	}
-
-	unsigned short port = ntohs(address.sin_port);
+	//获取监听套接字的端口号
+	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_LISTEN);
+	unsigned short port = (unsigned short)priv_sock_recv_int(sess->child_fd);
+	
 	int addr[4] = { 0 };
 	sscanf(ip, "%u.%u.%u.%u", &addr[0], &addr[1], &addr[2], &addr[3]);
 
@@ -303,6 +349,11 @@ int port_action(const session_t* sess)
 {
 	if(sess->port_addr)
 	{
+		if(pasv_action(sess))
+		{
+			perror("both port and pasv are active.");
+			exit(EXIT_FAILURE);
+		}
 		return 1;
 	}
 
@@ -311,8 +362,17 @@ int port_action(const session_t* sess)
 
 int pasv_action(const session_t* sess)
 {
-	if(sess->pasv_lst_fd != -1)
+	//验证是否处于被动模式
+	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_ACTIVE);
+
+	if(priv_sock_recv_int(sess->child_fd))
 	{
+		if(port_action(sess))
+		{
+			perror("both port and pasv are active.");
+			exit(EXIT_FAILURE);
+		}
+
 		return 1;
 	}
 
@@ -331,30 +391,17 @@ int get_transfer_fd(session_t *sess)
 	
 	if(port_action(sess))
 	{
-		int sock = tcp_client();
-
-		if(connect(sock, (struct sockaddr*)sess->port_addr, sizeof(struct sockaddr)) < 0)
+		if(get_port_fd(sess) == 0)
 		{
 			ret = 0;
-		}
-		else
-		{
-			sess->data_fd = sock;
 		}
 	}
 
 	if(pasv_action(sess))
 	{
-		int sock = accept(sess->pasv_lst_fd, NULL, NULL);
-		if(sock < 0)
+		if(get_pasv_fd(sess) == 0)
 		{
 			ret = 0;
-		}
-		else
-		{
-			close(sess->pasv_lst_fd);
-			sess->pasv_lst_fd = -1;
-			sess->data_fd = sock;
 		}
 	}
 

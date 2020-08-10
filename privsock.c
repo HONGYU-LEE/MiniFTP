@@ -55,19 +55,19 @@ void priv_sock_send_cmd(int fd, char cmd)
 	}
 }
 
-char priv_sock_get_cmd(int fd)
+char priv_sock_recv_cmd(int fd)
 {
 	char cmd;
 	int ret = recv(fd, &cmd, sizeof(cmd), 0);
 
 	if(ret == 0)
 	{
-		printf("ftp process eixt.\n");
+		printf("ftp process exit.\n");
 		exit(EXIT_SUCCESS);
 	}
 	else if(ret != sizeof(cmd))
 	{
-		ERR_EXIT("priv_sock_get_cmd error.");
+		ERR_EXIT("priv_sock_recv_cmd error.");
 	}
 
 	return cmd;
@@ -83,19 +83,19 @@ void priv_sock_send_result(int fd, char res)
 	}
 }
 
-char priv_sock_get_result(int fd)
+char priv_sock_recv_result(int fd)
 {
 	char res;
 	int ret = recv(fd, &res, sizeof(res), 0);
 
 	if(ret == 0)
 	{
-		printf("ftp process eixt.\n");
+		printf("ftp process exit.\n");
 		exit(EXIT_SUCCESS);
 	}
 	else if(ret != sizeof(res))
 	{
-		ERR_EXIT("priv_sock_get_result error.");
+		ERR_EXIT("priv_sock_recv_result error.");
 	}
 
 	return res;
@@ -112,19 +112,19 @@ void priv_sock_send_int(int fd, int the_int)
 	}
 }
 
-int priv_sock_get_int(int fd)
+int priv_sock_recv_int(int fd)
 {
 	int the_int;
 	int ret = recv(fd, &the_int, sizeof(the_int), 0);
 
 	if(ret == 0)
 	{
-		printf("ftp process eixt.\n");
+		printf("ftp process exit.\n");
 		exit(EXIT_SUCCESS);
 	}
 	else if(ret != sizeof(the_int))
 	{
-		ERR_EXIT("priv_sock_get_int error.");
+		ERR_EXIT("priv_sock_recv_int error.");
 	}
 
 	return the_int;
@@ -143,11 +143,11 @@ void priv_sock_send_buf(int fd, const char *buf, unsigned int len)
 
 void priv_sock_recv_buf(int fd, char *buf, unsigned int len)
 {
-	int recv_len = priv_sock_get_int(fd);
-	if(recv_len != len)
+	unsigned int recv_len = priv_sock_recv_int(fd);
+	/*if(recv_len != len)
 	{
 		ERR_EXIT("priv_sock_recv_buf error.");
-	}
+	}*/
 
 	int ret = recv(fd, buf, recv_len, 0);
 	if(ret != recv_len)
