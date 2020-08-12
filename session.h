@@ -20,10 +20,16 @@ typedef struct session
 	/* 协议状态 */
 	int is_ascii;
 	char *rnfr_name;
+	long long restart_pos;
 
 	/* 父子进程通道 */
 	int parent_fd;
 	int child_fd;
+
+	/* 限速 */
+	unsigned long download_max_rate;
+	long transfer_start_sec;
+	long transfer_start_usec;
 
 }session_t;
 

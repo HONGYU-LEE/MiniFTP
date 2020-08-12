@@ -34,6 +34,9 @@ static void do_rnto(session_t *sess);
 static void do_size(session_t *sess); 
 static void do_retr(session_t *sess); 
 static void do_stor(session_t *sess); 
+static void do_rest(session_t *sess); 
+static void do_quit(session_t *sess); 
+
 
 
 int pasv_active(const session_t* sess);
@@ -41,24 +44,15 @@ int port_active(const session_t* sess);
 
 /*
 
-static void do_quit(session_t *sess); 
-
 
 //static void do_stru(session_t *sess); 
 //static void do_mode(session_t *sess); 
-
 static void do_appe(session_t *sess); 
-
 static void do_nlst(session_t *sess); 
-static void do_rest(session_t *sess); 
+
 static void do_abor(session_t *sess); 
-
-
-
 static void do_site(session_t *sess); 
-
-static void do_feat(session_t *sess); 
-
+ 
 static void do_stat(session_t *sess); 
 static void do_noop(session_t *sess); 
 static void do_help(session_t *sess);
@@ -85,11 +79,13 @@ static ftpcmd_t ctl_cmds[] =
 	{"RETR", do_retr },
 	{"STOR", do_stor },
 	{"CDUP", do_cdup },
-	/*
-	{"XCWD", do_cwd },
-
-	{"XCUP", do_cdup },
+	{"REST", do_rest },
 	{"QUIT", do_quit },
+	/*
+	,
+
+	,
+	
 	{"ACCT", NULL },
 	{"SMNT", NULL },
 	{"REIN", NULL },
@@ -100,7 +96,7 @@ static ftpcmd_t ctl_cmds[] =
 	//服务命令
 	{"APPE", do_appe },
 	{"NLST", do_nlst },
-	{"REST", do_rest },
+	
 	{"ABOR", do_abor },
 	{"\377\364\377\362ABOR", do_abor},
 	{"XPWD", do_pwd },
@@ -109,6 +105,8 @@ static ftpcmd_t ctl_cmds[] =
 	{"STAT", do_stat },
 	{"NOOP", do_noop },
 	{"HELP", do_help },
+		{"XCWD", do_cwd  },
+	{"XCUP", do_cdup },
 	{"STOU", NULL },
 	{"ALLO", NULL }
 	*/
@@ -619,6 +617,17 @@ static void do_stor(session_t *sess)
 	}
 
 	ftp_reply(sess, FTP_DATACONN, "Ok to send data.");
+
+	//断点续传
+	long long offset = sess->restart_pos;
+	sess->restart_pos = 0;
+
+	//偏移到上次断开的位置
+	if(lseek(fd, offset, SEEK_SET) < 0)
+	{
+		ftp_reply(sess, FTP_UPLOADFAIL, "Could not create file.");
+		return;
+	}
 	
 	char buf[MAX_BUFFER_SIZE] = { 0 };
 	int ret;
@@ -677,58 +686,92 @@ static void do_retr(session_t *sess)
 	struct stat sbuf;
 	fstat(fd, &sbuf);
 
-	char msg[MAX_BUFFER_SIZE] = { 0 };
-	//获取文件传输格式
-	if(sess->is_ascii == 1)
+	long long offset = sess->restart_pos;
+	sess->restart_pos = 0;
+	
+	//偏移位置大于等于文件大小，说明文件以及下载完毕
+	if(offset >= sbuf.st_size)
 	{
-		sprintf(msg, "Opening ASCII mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
+		ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
 	}
 	else
 	{
-		sprintf(msg, "Opening BINARY mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
-	}
+		char msg[MAX_BUFFER_SIZE] = { 0 };
+		//获取文件传输格式
+		if(sess->is_ascii == 1)
+		{
+			sprintf(msg, "Opening ASCII mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
+		}
+		else
+		{
+			sprintf(msg, "Opening BINARY mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
+		}
 
-	ftp_reply(sess, FTP_DATACONN, msg);
-	
-	char buf[MAX_BUFFER_SIZE] = { 0 };
-	int ret;
-
-	int read_count = 0;//本轮需要读取的大小
-	int read_total_byte = sbuf.st_size;//需要读取的总大小
-
-	//开始数据传输
-	while(1)
-	{
-		read_count = read_total_byte > MAX_BUFFER_SIZE ? MAX_BUFFER_SIZE : read_total_byte;
-		//从文件中读取数据
-		ret = read(fd, buf, read_count);
+		ftp_reply(sess, FTP_DATACONN, msg);
 		
-		//数据读取失败
-		if(ret == -1 || ret != read_count)
+		//断点续载，偏移到上次暂停的位置
+		if(lseek(fd, offset, SEEK_SET) < 0)
 		{
-			ftp_reply(sess, FTP_BADSENDFILE, "Failure reading from local file.");
-			break;
-		}
-		//文件传输完成
-		else if(ret == 0)
-		{
-			ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
-			break;
+			ftp_reply(sess, FTP_UPLOADFAIL, "Could not create file.");
+			return;
 		}
 
-		//将读取的数据传输给客户端
-		if(send(sess->data_fd, buf, ret, 0) != ret)
-		{
-			//如果写入的数据大小和获取的不一样
-			ftp_reply(sess, FTP_BADSENDFILE, "Failure writting to network stream.");
-			break;
-		}
+		char buf[MAX_BUFFER_SIZE] = { 0 };
+		int ret;
 
-		read_total_byte -= read_count;
+		int read_count = 0;//本轮需要读取的大小
+		int read_total_byte = sbuf.st_size;//需要读取的总大小
+
+		//开始数据传输
+		while(1)
+		{
+			read_count = read_total_byte > MAX_BUFFER_SIZE ? MAX_BUFFER_SIZE : read_total_byte;
+			//从文件中读取数据
+			ret = read(fd, buf, read_count);
+			
+			//数据读取失败
+			if(ret == -1 || ret != read_count)
+			{
+				ftp_reply(sess, FTP_BADSENDFILE, "Failure reading from local file.");
+				break;
+			}
+			//文件传输完成
+			else if(ret == 0)
+			{
+				ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
+				break;
+			}
+
+			//将读取的数据传输给客户端
+			if(send(sess->data_fd, buf, ret, 0) != ret)
+			{
+				//如果写入的数据大小和获取的不一样
+				ftp_reply(sess, FTP_BADSENDFILE, "Failure writting to network stream.");
+				break;
+			}
+
+			read_total_byte -= read_count;
+		}
 	}
 
 	//关闭数据连接
 	close(fd);
 	close(sess->data_fd);
 	sess->data_fd = -1;
+}
+
+static void do_rest(session_t *sess)
+{
+	//记录断点重传的位置
+	sess->restart_pos = (long long)atoll(sess->arg);
+
+	char msg[MAX_BUFFER_SIZE] = { 0 };
+	sprintf(msg, "Restart position accepted (%lld).", sess->restart_pos);
+
+	ftp_reply(sess, FTP_RESTOK, msg);
+}
+
+static void do_quit(session_t *sess)
+{
+	ftp_reply(sess, FTP_GOODBYE, "Goodbye.");
 }

@@ -8,6 +8,7 @@ static void privop_pasv_listen(session_t *sess);//获取被动模式下的监听端口号
 
 static void privop_pasv_accept(session_t *sess);//获取被动模式下的数据连接套接字
 
+//系统调用
 int capset(cap_user_header_t hdrp, const cap_user_data_t datap) 
 { 
 	return syscall(__NR_capset, hdrp, datap); 
@@ -51,7 +52,6 @@ static void privilege_promotion()
 //nobody进程
 void handle_parent(session_t* sess)
 {
-	//get_privilege();
 	privilege_promotion();
 
 	char cmd;
