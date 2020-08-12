@@ -1209,4 +1209,463 @@
 > }
 > ```
 >
+
+
+
+-------------------
+
+# 2020_08_10
+
+## 一、完成nobody进程20端口的绑定
+
+> ```c
+> static void privilege_promotion()
+> {
+> 	
+> 	//将进程的实际用户从root改为nobody
+> 	struct passwd* pw = getpwnam("nobody");
+> 	if(pw == NULL)
+> 	{
+> 		ERR_EXIT("getpwnam error.");
+> 	}
+> 	if(setegid(pw->pw_gid) < 0)
+> 	{
+> 		ERR_EXIT("setegid error.");
+> 	}
+> 	if(seteuid(pw->pw_uid) < 0)
+> 	{
+> 		ERR_EXIT("seteuid error.");
+> 	}
 > 
+> 	//提升用户权限,让其能够绑定20端口	
+> 	struct __user_cap_header_struct hdrp;
+> 	struct __user_cap_data_struct datap;
+> 
+> 	hdrp.version = _LINUX_CAPABILITY_VERSION_1;
+> 	hdrp.pid = 0;
+> 
+> 	__u32 mask = 0;
+> 	mask |=  (1 << CAP_NET_BIND_SERVICE); //获取绑定特权端口(低于1024)的权限
+> 	
+> 	datap.effective = mask;
+> 	datap.permitted = mask;
+> 	datap.inheritable = 0; //不需要继承
+> 
+> 	capset(&hdrp, &datap);
+> }
+> ```
+
+-------------------------------------------------------------
+
+## 二、完成主动模式与被动模式下nobody进程与FTP服务进程的通信
+
+> ### 获取主动模式下的数据连接套接字
+>
+> ```c
+> static void privop_pasv_recv_data_sock(session_t *sess)
+> {
+> 	unsigned short port = (unsigned short)priv_sock_recv_int(sess->parent_fd);
+> 
+> 	char ip[16] = { 0 };
+> 	priv_sock_recv_buf(sess->parent_fd, ip, sizeof(ip));
+> 
+> 	struct sockaddr_in addr;
+> 	addr.sin_family = AF_INET;
+> 	addr.sin_port = htons(port);
+> 	addr.sin_addr.s_addr = inet_addr(ip);
+> 
+> 	//绑定20端口
+> 	int fd = tcp_client(20);
+> 
+> 	if(fd == -1)
+> 	{
+> 		priv_sock_send_result(sess->parent_fd, PRIV_SOCK_RESULT_BAD);
+> 		return;
+> 	}
+> 	if(connect(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0)
+> 	{
+> 		close(fd);
+> 		priv_sock_send_result(sess->parent_fd, PRIV_SOCK_RESULT_BAD);
+> 		return;
+> 	}
+> 
+> 	priv_sock_send_result(sess->parent_fd, PRIV_SOCK_RESULT_OK);
+> 	priv_sock_send_fd(sess->parent_fd, fd);
+> 	close(fd);
+> }
+> ```
+>
+> ### 判断被动模式是否被激活
+>
+> ````c
+> static void privop_pasv_active(session_t *sess)
+> {
+> 	int ret = 1;
+> 
+> 	if(sess->pasv_lst_fd != -1)
+> 	{
+> 		ret = 1;
+> 	}
+> 	else
+> 	{
+> 		ret = 0;
+> 	}
+> 
+> 	priv_sock_send_int(sess->parent_fd, ret);
+> }
+> ````
+>
+> ### 获取被动模式下的监听端口号
+>
+> ```c
+> static void privop_pasv_listen(session_t *sess)
+> {
+> 	char ip[16] = "192.168.0.128"; //服务器IP地址
+> 	sess->pasv_lst_fd = tcp_server(ip, 0); //端口号给0,会自动分配端口号
+> 	
+> 	struct sockaddr_in addr;
+> 	socklen_t socklen = sizeof(struct sockaddr);
+> 
+> 	if(getsockname(sess->pasv_lst_fd, (struct sockaddr*)&addr, &socklen) < 0)
+> 	{
+> 		ERR_EXIT("getsockname");
+> 	}
+> 	
+> 	unsigned short port = ntohs(addr.sin_port);
+> 	priv_sock_send_int(sess->parent_fd, (int)port);
+> }
+> ```
+>
+> ### 获取被动模式下的数据连接套接字
+>
+> ```c
+> static void privop_pasv_accept(session_t *sess)
+> {
+> 	int fd = accept(sess->pasv_lst_fd, 0, 0);
+> 	
+> 	close(sess->pasv_lst_fd);
+> 	sess->pasv_lst_fd = -1;
+> 
+> 	if(fd == -1)
+> 	{
+> 		priv_sock_send_result(sess->parent_fd, PRIV_SOCK_RESULT_BAD);
+> 		return;
+> 	}
+> 
+> 	priv_sock_send_result(sess->parent_fd, PRIV_SOCK_RESULT_OK);
+> 	priv_sock_send_fd(sess->parent_fd, fd);
+> 	close(fd);
+> }
+> ```
+>
+> ### 主动模式与被动模式的重构
+>
+> ```c
+> static void do_port(session_t *sess)
+> {
+> 	//解析IP地址 例如: PORT 192,168,1,128,5,35
+> 	unsigned int addr[6] = { 0 };
+> 	sscanf(sess->arg, "%u,%u,%u,%u,%u,%u", &addr[0], &addr[1], &addr[2], &addr[3], &addr[4], &addr[5]);
+> 
+> 	sess->port_addr = (struct sockaddr_in*)malloc(sizeof(struct sockaddr_in));
+> 	
+> 	sess->port_addr->sin_family = AF_INET;
+> 	//设置IP地址
+> 	unsigned char* p = (unsigned char*)&sess->port_addr->sin_addr;
+> 	p[0] = addr[0];
+> 	p[1] = addr[1];
+> 	p[2] = addr[2];
+> 	p[3] = addr[3];
+> 
+> 	//设置端口号
+> 	p = (unsigned char*)&sess->port_addr->sin_port;
+> 	p[0] = addr[4];
+> 	p[1] = addr[5];
+> 
+> 	ftp_reply(sess, FTP_PORTOK, "PORT command successful. Consider using PASV.");
+> }
+> 
+> 
+> static void do_pasv(session_t *sess)
+> {
+> 	char ip[16] = "192.168.0.128"; //服务器IP地址
+> 
+> 	//获取监听套接字的端口号
+> 	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_LISTEN);
+> 	unsigned short port = (unsigned short)priv_sock_recv_int(sess->child_fd);
+> 	
+> 	int addr[4] = { 0 };
+> 	sscanf(ip, "%u.%u.%u.%u", &addr[0], &addr[1], &addr[2], &addr[3]);
+> 
+> 	char buf[MAX_BUFFER_SIZE] = { 0 };
+> 	sprintf(buf, "Entering Passive Mode (%u,%u,%u,%u,%u,%u).", addr[0], addr[1], addr[2], addr[3], port >> 8, port & 0x00ff);
+> 
+> 	ftp_reply(sess, FTP_PASVOK, buf);
+> }
+> 
+> int get_port_fd(session_t *sess)
+> {
+> 	int ret = 1;
+> 	//ftp服务进程向nobody进程发起通信
+> 	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_GET_DATA_SOCK);
+> 
+> 	unsigned short port = ntohs(sess->port_addr->sin_port);
+> 	char* ip = inet_ntoa(sess->port_addr->sin_addr);
+> 
+> 	//将客户端的地址信息传递给nobody进程，让其进行主动连接
+> 	priv_sock_send_int(sess->child_fd, (int)port);
+> 	priv_sock_send_buf(sess->child_fd, ip, strlen(ip));
+> 
+> 	char res = priv_sock_recv_result(sess->child_fd);
+> 	if(res == PRIV_SOCK_RESULT_BAD)
+> 	{
+> 		ret = 0;
+> 	}
+> 	else if(res == PRIV_SOCK_RESULT_OK)
+> 	{
+> 		//建立连接成功，获取数据连接
+> 		sess->data_fd = priv_sock_recv_fd(sess->child_fd);
+> 	}
+> 
+> 	return ret;
+> }
+> 
+> int get_pasv_fd(session_t *sess)
+> {
+> 	int ret = 1;
+> 
+> 	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_ACCEPT);
+> 
+> 	char res = priv_sock_recv_result(sess->child_fd);
+> 	if(res == PRIV_SOCK_RESULT_BAD)
+> 	{
+> 		ret = 0;
+> 	}
+> 	else if(res == PRIV_SOCK_RESULT_OK)
+> 	{
+> 		//建立连接成功，获取数据连接
+> 		sess->data_fd = priv_sock_recv_fd(sess->child_fd);
+> 	}
+> 
+> 	return ret;
+> }
+> 
+> int port_active(const session_t* sess)
+> {
+> 	if(sess->port_addr)
+> 	{
+> 		if(pasv_active(sess))
+> 		{
+> 			perror("both port and pasv are active.");
+> 			exit(EXIT_FAILURE);
+> 		}
+> 		return 1;
+> 	}
+> 
+> 	return 0;
+> }
+> 
+> int pasv_active(const session_t* sess)
+> {
+> 	//验证是否处于被动模式
+> 	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_ACTIVE);
+> 
+> 	if(priv_sock_recv_int(sess->child_fd))
+> 	{
+> 		if(port_active(sess))
+> 		{
+> 			perror("both port and pasv are active.");
+> 			exit(EXIT_FAILURE);
+> 		}
+> 
+> 		return 1;
+> 	}
+> 
+> 	return 0;
+> }
+> 
+> int get_transfer_fd(session_t *sess)
+> {
+> 	if(!port_active(sess) && !pasv_active(sess))
+> 	{
+> 		ftp_reply(sess, FTP_BADSENDCONN, "Use PORT or PASV first");
+> 		return 0;
+> 	}
+> 	
+> 	int ret = 1;
+> 	
+> 	if(port_active(sess))
+> 	{
+> 		if(get_port_fd(sess) == 0)
+> 		{
+> 			ret = 0;
+> 		}
+> 	}
+> 
+> 	if(pasv_active(sess))
+> 	{
+> 		if(get_pasv_fd(sess) == 0)
+> 		{
+> 			ret = 0;
+> 		}
+> 	}
+> 
+> 	if(sess->port_addr)
+> 	{
+> 		free(sess->port_addr);
+> 		sess->port_addr = NULL;
+> 	}
+> 
+> 	return ret;
+> }
+> ```
+
+
+
+--------------------
+
+# 2020_08_11
+
+## 一、命令实现（CWD、CDUP、MKD、RMD、DELE、RNFR、RNTO、SIZE）
+
+>### 实现目录切换功能CWD、CDUP
+>
+>```c
+>//切换目录
+>static void do_cwd(session_t *sess)
+>{
+>	if(chdir(sess->arg) < 0)
+>	{
+>		ftp_reply(sess, FTP_NOPERM, "Failed to change directory.");
+>		return;
+>	}
+>
+>	ftp_reply(sess, FTP_CWDOK , "Directory successfully changed.");
+>}
+>
+>//返回上一级目录
+>void do_cdup(session_t *sess) 
+>{ 
+>	if(chdir("..") < 0) 
+>	{ 
+>		ftp_reply(sess, FTP_NOPERM, "Failed to change directory."); 
+>		return; 
+>	}
+>
+>	ftp_reply(sess, FTP_CWDOK, "Directory successfully changed."); 
+>}
+>```
+>
+>### 实现创建目录功能MKD
+>
+>```c
+>static void do_mkd(session_t *sess)
+>{
+>	if(mkdir(sess->arg, 0777) < 0)
+>	{
+>		ftp_reply(sess, FTP_NOPERM, "Create directory operation failed."); 
+>		return;
+>	}
+>
+>	//257 "/home/lee/test1/1" created
+>	char buf[MAX_BUFFER_SIZE] = { 0 };
+>	sprintf(buf, "\"%s\" created", sess->arg);
+>	
+>	ftp_reply(sess, FTP_MKDIROK, buf);
+>}
+>```
+>
+>### 实现文件删除功能RMD、DELE
+>
+>```c
+>//删除目录文件
+>static void do_rmd(session_t *sess)
+>{
+>	if(rmdir(sess->arg) < 0)
+>	{
+>		ftp_reply(sess, FTP_NOPERM, "Failed to change directory.");
+>		return;
+>	}
+>
+>	ftp_reply(sess, FTP_RMDIROK , "Remove directory operation failed.");
+>}
+>
+>//删除普通文件
+>static void do_dele(session_t *sess)
+>{
+>	if(unlink(sess->arg) < 0)
+>	{
+>		ftp_reply(sess, FTP_NOPERM, "Delete operation failed.");
+>		return;
+>	}
+>
+>	ftp_reply(sess, FTP_DELEOK , "Delete operation successful.");
+>}
+>```
+>
+>### 实现重命名功能RNFR、RNTO
+>
+>```c
+>//获取原文件名
+>static void do_rnfr(session_t *sess)
+>{
+>	
+>	sess->rnfr_name = (char*)malloc(strlen(sess->arg) + 1);
+>	memset(sess->rnfr_name, 0, strlen(sess->rnfr_name) + 1);
+>	strcpy(sess->rnfr_name, sess->arg);
+>
+>	ftp_reply(sess, FTP_RNFROK, "Ready for RNTO.");
+>}
+>
+>//更换名字
+>static void do_rnto(session_t *sess)
+>{
+>	//如果之前没有执行过rnfr
+>	if(sess->rnfr_name == NULL)
+>	{
+>		ftp_reply(sess, FTP_NEEDRNFR, "RNFR required first.");
+>		return;
+>	}
+>
+>	if(rename(sess->rnfr_name, sess->arg) < 0)
+>	{
+>		ftp_reply(sess, FTP_NOPERM, "Rename failed.");
+>		return;
+>	}
+>
+>	free(sess->rnfr_name);
+>	sess->rnfr_name = NULL;
+>
+>	ftp_reply(sess, FTP_RENAMEOK, "Rename successful.");
+>}
+>```
+>
+>### 实现文件大小获取功能SIZE
+>
+>```c
+>static void do_size(session_t *sess) 
+>{
+>	struct stat sbuf;
+>	//找不到文件
+>	if(stat(sess->arg, &sbuf) < 0)
+>	{
+>		ftp_reply(sess, FTP_FILEFAIL, "Could not get file size.");
+>		return;
+>	}
+>	
+>	//判断是否为常规文件
+>	if(!S_ISREG(sbuf.st_mode))
+>	{
+>		ftp_reply(sess, FTP_FILEFAIL, "Could not get file size.");
+>		return;
+>	}
+>
+>	char buf[MAX_BUFFER_SIZE] = { 0 };
+>	sprintf(buf, "%lld", sbuf.st_size);
+>	
+>	ftp_reply(sess, FTP_SIZEOK, buf);
+>}
+>```
+
+-------------------------
+

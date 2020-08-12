@@ -15,7 +15,7 @@ int main(int agrc, char* argv[])
 						/* 数据连接 */
 						NULL, -1, -1,
 						/* 协议状态 */
-						1,
+						1, NULL,
 						/* 父子进程通道 */
 						-1, -1
 					 };

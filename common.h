@@ -6,6 +6,7 @@
 #include<string.h>
 #include<stdlib.h>
 #include<assert.h>
+#include <fcntl.h>
 
 #include<sys/socket.h>
 #include<netinet/in.h>

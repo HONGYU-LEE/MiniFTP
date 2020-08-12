@@ -19,7 +19,8 @@ typedef struct session
 
 	/* 协议状态 */
 	int is_ascii;
-	
+	char *rnfr_name;
+
 	/* 父子进程通道 */
 	int parent_fd;
 	int child_fd;
