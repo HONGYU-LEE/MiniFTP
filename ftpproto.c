@@ -8,13 +8,6 @@ void ftp_reply(session_t* sess, int state, char* msg)
 	send(sess->ctl_fd, buf, strlen(buf), 0);
 }
 
-
-typedef struct ftpcmd
-{
-	const char* cmd;
-	void(*handler)(session_t *sess);
-}ftpcmd_t;
-
 static void do_user(session_t *sess); 
 static void do_pass(session_t *sess);
 static void do_syst(session_t *sess); 
@@ -58,6 +51,12 @@ static void do_noop(session_t *sess);
 static void do_help(session_t *sess);
 */
 //√¸¡Ó”≥…‰±Ì
+typedef struct ftpcmd
+{
+	const char* cmd;
+	void(*handler)(session_t *sess);
+}ftpcmd_t;
+
 static ftpcmd_t ctl_cmds[] = 
 {
 	{"USER", do_user },

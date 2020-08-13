@@ -1,9 +1,14 @@
 #include"common.h"
 #include"session.h"
 #include"sysutil.h"
+#include"tunable.h"
+#include"ftpproto.h"
+#include"parseconf.h"
+#include"ftpcodes.h"
 
 int main(int agrc, char* argv[])
 {
+	ParseConf_Test();
 	if(getuid() != 0)
 	{
 		perror("MiniFTP 1.0 : It must be started by root.\n");
@@ -20,7 +25,7 @@ int main(int agrc, char* argv[])
 						-1, -1
 					 };
 
-	int lst_sock = tcp_server("192.168.0.128", 9188); 
+	int lst_sock = tcp_server(tunable_listen_address, tunable_listen_port); 
 
 	int new_sock;
 	struct sockaddr_in addr;

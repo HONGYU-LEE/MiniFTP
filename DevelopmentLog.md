@@ -1669,3 +1669,387 @@
 
 -------------------------
 
+# 2020_08_13
+
+## 一、实现上传、下载、断点续传功能
+
+> ### 实现断点续传功能REST
+>
+> ```c
+> static void do_rest(session_t *sess)
+> {
+> 	//记录断点重传的位置
+> 	sess->restart_pos = (long long)atoll(sess->arg);
+> 
+> 	char msg[MAX_BUFFER_SIZE] = { 0 };
+> 	sprintf(msg, "Restart position accepted (%lld).", sess->restart_pos);
+> 
+> 	ftp_reply(sess, FTP_RESTOK, msg);
+> }
+> ```
+>
+> ### 实现文件下载功能RETR
+>
+> ```c
+> //下载文件
+> static void do_retr(session_t *sess)
+> {
+> 	//建立数据连接
+> 	if(get_transfer_fd(sess) == 0)
+> 	{
+> 		return;
+> 	}
+> 	
+> 	//打开文件
+> 	int fd = open(sess->arg, O_RDONLY);
+> 	if(fd == -1)
+> 	{
+> 		ftp_reply(sess, FTP_FILEFAIL, "Failed to open file.");
+> 		return;
+> 	}
+> 
+> 	//获取文件属性
+> 	struct stat sbuf;
+> 	fstat(fd, &sbuf);
+> 
+> 	long long offset = sess->restart_pos;
+> 	sess->restart_pos = 0;
+> 	
+> 	//偏移位置大于等于文件大小，说明文件以及下载完毕
+> 	if(offset >= sbuf.st_size)
+> 	{
+> 		ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
+> 	}
+> 	else
+> 	{
+> 		char msg[MAX_BUFFER_SIZE] = { 0 };
+> 		//获取文件传输格式
+> 		if(sess->is_ascii == 1)
+> 		{
+> 			sprintf(msg, "Opening ASCII mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
+> 		}
+> 		else
+> 		{
+> 			sprintf(msg, "Opening BINARY mode data connection for %s (%d bytes).", sess->arg, sbuf.st_size);
+> 		}
+> 
+> 		ftp_reply(sess, FTP_DATACONN, msg);
+> 		
+> 		//断点续载，偏移到上次暂停的位置
+> 		if(lseek(fd, offset, SEEK_SET) < 0)
+> 		{
+> 			ftp_reply(sess, FTP_UPLOADFAIL, "Could not create file.");
+> 			return;
+> 		}
+> 
+> 		char buf[MAX_BUFFER_SIZE] = { 0 };
+> 		int ret;
+> 
+> 		int read_count = 0;//本轮需要读取的大小
+> 		int read_total_byte = sbuf.st_size;//需要读取的总大小
+> 
+> 		//开始数据传输
+> 		while(1)
+> 		{
+> 			read_count = read_total_byte > MAX_BUFFER_SIZE ? MAX_BUFFER_SIZE : read_total_byte;
+> 			//从文件中读取数据
+> 			ret = read(fd, buf, read_count);
+> 			
+> 			//数据读取失败
+> 			if(ret == -1 || ret != read_count)
+> 			{
+> 				ftp_reply(sess, FTP_BADSENDFILE, "Failure reading from local file.");
+> 				break;
+> 			}
+> 			//文件传输完成
+> 			else if(ret == 0)
+> 			{
+> 				ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
+> 				break;
+> 			}
+> 
+> 			//将读取的数据传输给客户端
+> 			if(send(sess->data_fd, buf, ret, 0) != ret)
+> 			{
+> 				//如果写入的数据大小和获取的不一样
+> 				ftp_reply(sess, FTP_BADSENDFILE, "Failure writting to network stream.");
+> 				break;
+> 			}
+> 
+> 			read_total_byte -= read_count;
+> 		}
+> 	}
+> 
+> 	//关闭数据连接
+> 	close(fd);
+> 	close(sess->data_fd);
+> 	sess->data_fd = -1;
+> }
+> ```
+>
+> ### 实现文件上传功能STOR
+>
+> ```c
+> static void do_stor(session_t *sess)
+> {
+> 	//建立数据连接
+> 	if(get_transfer_fd(sess) == 0)
+> 	{
+> 		return;
+> 	}
+> 	
+> 	//在服务器建立文件
+> 	int fd = open(sess->arg, O_CREAT | O_WRONLY, 0755);
+> 	if(fd == -1)
+> 	{
+> 		ftp_reply(sess, FTP_FILEFAIL, "Failed to open file.");
+> 		return;
+> 	}
+> 
+> 	ftp_reply(sess, FTP_DATACONN, "Ok to send data.");
+> 
+> 	//断点续传
+> 	long long offset = sess->restart_pos;
+> 	sess->restart_pos = 0;
+> 
+> 	//偏移到上次断开的位置
+> 	if(lseek(fd, offset, SEEK_SET) < 0)
+> 	{
+> 		ftp_reply(sess, FTP_UPLOADFAIL, "Could not create file.");
+> 		return;
+> 	}
+> 	
+> 	char buf[MAX_BUFFER_SIZE] = { 0 };
+> 	int ret;
+> 
+> 	//开始数据传输
+> 	while(1)
+> 	{
+> 		ret = recv(sess->data_fd, buf, MAX_BUFFER_SIZE, 0);
+> 		
+> 		//数据读取失败
+> 		if(ret == -1)
+> 		{
+> 			ftp_reply(sess, FTP_BADSENDFILE, "Failure reading from local file.");
+> 			break;
+> 		}
+> 		//文件传输完成
+> 		else if(ret == 0)
+> 		{
+> 			ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
+> 			break;
+> 		}
+> 
+> 		//将获取的数据写入文件中
+> 		if(write(fd, buf, ret) != ret)
+> 		{
+> 			//如果写入的数据大小和获取的不一样
+> 			ftp_reply(sess, FTP_BADSENDFILE, "Failure writting to network stream.");
+> 			break;
+> 		}
+> 	}
+> 
+> 	//关闭数据连接
+> 	close(fd);
+> 	close(sess->data_fd);
+> 	sess->data_fd = -1;
+> }
+> ```
+
+------------------------
+
+# 2020_08_13
+
+## 一、实现配置文件解析
+
+> ### 新增配置文件MiniFTP.conf
+>
+> ```c
+> #是否开启被动模式
+> pasv_enable=YES
+> #是否开启主动模式
+> port_enable=YES
+> #FTP服务器端口
+> listen_port=9188
+> #最大连接数
+> max_clients=2000
+> #每ip最大连接数
+> max_per_ip=50
+> #accept超时间
+> accept_timeout=60
+> #connect超时间
+> connect_timeout=60
+> #控制连接超时时间
+> idle_session_timeout=300
+> #数据连接超时时间
+> data_connection_timeout=300
+> #掩码
+> loacl_umask=077
+> #最大上传速度
+> upload_max_rate=0
+> #最大下载速度
+> download_mas_rate=0		
+> #FTP服务器IP地址
+> listen_address=192.168.0.128
+> ```
+>
+> ### 新增配置项模块tunable
+>
+> ```c
+> #ifndef _TUNABLE_H_
+> #define _TUNABLE_H_
+> extern int tunable_pasv_enable;							//是否开启被动模式
+> extern int tunable_port_enable;							//是否开启主动模式
+> extern unsigned int tunable_listen_port;				//FTP服务器端口
+> extern unsigned int tunable_max_clients;				//最大连接数
+> extern unsigned int tunable_max_per_ip;					//每ip最大连接数
+> extern unsigned int tunable_accept_timeout;				//Accept超时间
+> extern unsigned int tunable_connect_timeout;			//Connect超时间
+> extern unsigned int tunable_idle_session_timeout;		//控制连接超时时间
+> extern unsigned int tunable_data_connection_timeout;	//数据连接超时时间
+> extern unsigned int tunable_local_umask;				//掩码
+> extern unsigned int tunable_upload_max_rate;			//最大上传速度
+> extern unsigned int tunable_download_max_rate;			//最大下载速度
+> extern const char *tunable_listen_address;				//FTP服务器IP地址
+> 
+> #endif /* _TUNABLE_H_ */
+> ```
+>
+> ### 新增配置文件解析模块parseconf
+>
+> ```c
+> #include"parseconf.h"
+> #include"tunable.h"
+> 
+> //建立配置项与变量的映射表
+> 
+> //bool类型
+> static struct parseconf_bool_setting
+> {
+> 	const char* p_setting_name;
+> 	int* p_var;
+> }parseconf_bool_array[] = 
+> {
+> 	{"pasv_enable", &tunable_pasv_enable},
+> 	{"port_enable", &tunable_port_enable}
+> };
+> 
+> //uint类型
+> static struct parseconf_uint_setting
+> {
+> 	const char* p_setting_name;
+> 	unsigned int* p_var;
+> }parseconf_uint_array[] = 
+> {
+> 	{"listen_port", &tunable_listen_port},
+> 	{"max_clients", &tunable_max_clients},
+> 	{"max_per_ip", &tunable_max_per_ip},
+> 	{"accept_timeout", &tunable_accept_timeout},
+> 	{"connect_timeout", &tunable_connect_timeout},
+> 	{"idle_session_timeout", &tunable_idle_session_timeout},
+> 	{"data_connection_timeout", &tunable_data_connection_timeout},
+> 	{"local_umask", &tunable_local_umask},
+> 	{"upload_max_rate", &tunable_upload_max_rate},
+> 	{"download_max_rate", &tunable_download_max_rate}
+> };
+> 
+> //字符类型
+> static struct parseconf_str_setting
+> {
+> 	const char* p_setting_name;
+> 	const char** p_var;
+> }parseconf_str_array[] = 
+> {
+> 	{"listen_address", &tunable_listen_address}
+> };
+> 
+> void parseconf_load_setting(const char *setting)
+> {
+> 	//分割变量名与值 pasv_enable=1;
+> 	char key[MAX_KEY_VALUE_SIZE] = {0};
+> 	char value[MAX_KEY_VALUE_SIZE] = {0};
+> 	str_split(setting, key, value, '=');
+> 
+> 	int list_size = sizeof(parseconf_str_array) / sizeof(struct parseconf_str_setting);
+> 	for(int i = 0; i < list_size; i++)
+> 	{
+> 		if(strcmp(key, parseconf_str_array[i].p_setting_name) == 0)
+> 		{
+> 			const char** p_cur_setting = parseconf_str_array[i].p_var;
+> 			
+> 			//如果之前不为空，直接释放，防止内存泄漏
+> 			if(*p_cur_setting != NULL)
+> 			{
+> 				free((char*)(*p_cur_setting));
+> 			}
+> 			*p_cur_setting = strdup(value);//自动开辟空间的深拷贝
+> 			return;
+> 		}
+> 	}
+> 
+> 	list_size = sizeof(parseconf_bool_array) / sizeof(struct parseconf_bool_setting);
+> 	for(int i = 0; i < list_size; i++)
+> 	{
+> 		if(strcmp(key, parseconf_bool_array[i].p_setting_name) == 0)
+> 		{
+> 			str_to_upper(value);
+> 			
+> 			if(strcmp(value, "YES") == 0)
+> 			{
+> 				*parseconf_bool_array[i].p_var = 1;
+> 			}
+> 			else if(strcmp(value, "NO") == 0)
+> 			{
+> 				*parseconf_bool_array[i].p_var = 0;
+> 			}
+> 			else
+> 			{
+> 				printf("%d\n", strlen(value));
+> 				fprintf(stderr, "bad bool value in config file for : %s\n", key);
+> 				exit(EXIT_FAILURE);
+> 			}
+> 			return;
+> 		}
+> 	}
+> 
+> 	list_size = sizeof(parseconf_uint_array) / sizeof(struct parseconf_uint_setting);
+> 	for(int i = 0; i < list_size; i++)
+> 	{
+> 		if(strcmp(key, parseconf_uint_array[i].p_setting_name) == 0)
+> 		{
+> 			//0则认为默认
+> 			if(value[0] != '0')
+> 			{
+> 				*parseconf_uint_array[i].p_var = atoi(value);
+> 			}
+> 			return;
+> 		}
+> 	}
+> }
+> 
+> void parseconf_load_file(const char *path)
+> {
+> 	FILE* fp = fopen(path, "r");
+> 	if(fp == NULL)
+> 	{
+> 		ERR_EXIT("parseconf_load_file.");
+> 	}
+> 
+> 	char setting_line[MAX_SETTING_LINE] = { 0 };
+> 	while(fgets(setting_line, MAX_SETTING_LINE, fp) != NULL)
+> 	{
+> 		if(strlen(setting_line) == 0 || setting_line[0] == '#')
+> 		{
+> 			continue;
+> 		}
+> 
+> 		str_trim_crlf(setting_line);
+> 		parseconf_load_setting(setting_line);
+> 		memset(setting_line, 0, MAX_SETTING_LINE);
+> 	}
+> 	
+> 	fclose(fp);
+> }
+> ```
+
+-----------------------------------------------------

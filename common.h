@@ -26,8 +26,10 @@
 
 #define MAX_BUFFER_SIZE 1024
 #define MAX_COMMAND_LINE 1024
+#define MAX_SETTING_LINE 1024
+#define MAX_KEY_VALUE_SIZE 128
 #define MAX_COMMAND 128
-#define MAX_ARG 512
+#define MAX_ARG 128
 
 #define ERR_EXIT(msg) \
 	do\
