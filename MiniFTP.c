@@ -8,7 +8,7 @@
 
 int main(int agrc, char* argv[])
 {
-	ParseConf_Test();
+	parseconf_test();
 	if(getuid() != 0)
 	{
 		perror("MiniFTP 1.0 : It must be started by root.\n");
@@ -22,8 +22,13 @@ int main(int agrc, char* argv[])
 						/* 协议状态 */
 						1, NULL, 0,
 						/* 父子进程通道 */
-						-1, -1
+						-1, -1,
+						/* 限速 */
+						0, 0, 0, 0
 					 };
+
+	sess.upload_max_rate = tunable_upload_max_rate;
+	sess.download_max_rate = tunable_download_max_rate;
 
 	int lst_sock = tcp_server(tunable_listen_address, tunable_listen_port); 
 

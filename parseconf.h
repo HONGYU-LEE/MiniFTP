@@ -6,5 +6,6 @@
 
 void parseconf_load_file(const char *path);
 void parseconf_load_setting(const char *setting);
+void parseconf_test();
 
 #endif /* _PARSECONF_H_ */

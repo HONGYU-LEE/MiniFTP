@@ -131,7 +131,7 @@ void parseconf_load_file(const char *path)
 	fclose(fp);
 }
 
-void ParseConf_Test()
+void parseconf_test()
 {
 	parseconf_load_file("MiniFTP.conf");
 

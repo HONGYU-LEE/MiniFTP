@@ -598,6 +598,41 @@ static void do_size(session_t *sess)
 	ftp_reply(sess, FTP_SIZEOK, buf);
 }
 
+static void limit_rate(session_t *sess, int bytes_transfered, int is_upload)
+{
+	init_cur_time();
+	long cur_sec = get_time_sec();
+	long cur_usec = get_time_usec();
+
+	double pass_time = (double)(cur_sec - sess->transfer_start_sec);//先计算秒数
+	pass_time += (double)(cur_usec - sess->transfer_start_usec) / (double)1000000;//计算微秒部分
+
+	if(pass_time <= (double)0) 
+	{
+		//等于0的情况有可能，因为传的太快了
+		pass_time = (double)0.01;
+	}
+
+	unsigned long cur_rate = (unsigned long)((double)bytes_transfered / pass_time);//计算当前速度
+	unsigned long max_rate = (is_upload == 1) ? sess->upload_max_rate : sess->download_max_rate;
+	
+	//如果当前速度大于最大速度，则需要进行休眠来限速
+	if(cur_rate > max_rate)
+	{
+		//睡眠时间 = (当前传输速度 / 最大传输速度 - 1) * 传输时间 = 速率查 * 传输时间 
+		double rate_ratio = cur_rate / max_rate;//速率差
+		double sleep_time = (rate_ratio - (double)1) * pass_time;
+
+		nano_sleep(sleep_time);
+	}
+	
+	
+	//更新时间
+	init_cur_time();
+	sess->transfer_start_sec = get_time_sec();
+	sess->transfer_start_usec = get_time_usec();
+}
+
 //上传文件
 static void do_stor(session_t *sess)
 {
@@ -631,6 +666,11 @@ static void do_stor(session_t *sess)
 	char buf[MAX_BUFFER_SIZE] = { 0 };
 	int ret;
 
+	//记录当前时间
+	init_cur_time();
+	sess->transfer_start_sec = get_time_sec();
+	sess->transfer_start_usec = get_time_usec();
+
 	//开始数据传输
 	while(1)
 	{
@@ -647,6 +687,12 @@ static void do_stor(session_t *sess)
 		{
 			ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
 			break;
+		}
+		
+		//限速
+		if(sess->upload_max_rate != 0)
+		{
+			limit_rate(sess, ret, 1);
 		}
 
 		//将获取的数据写入文件中
@@ -720,6 +766,11 @@ static void do_retr(session_t *sess)
 
 		int read_count = 0;//本轮需要读取的大小
 		int read_total_byte = sbuf.st_size;//需要读取的总大小
+		
+		//记录当前时间
+		init_cur_time();
+		sess->transfer_start_sec = get_time_sec();
+		sess->transfer_start_usec = get_time_usec();
 
 		//开始数据传输
 		while(1)
@@ -739,6 +790,12 @@ static void do_retr(session_t *sess)
 			{
 				ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
 				break;
+			}
+
+			//限速
+			if(sess->download_max_rate != 0)
+			{
+				limit_rate(sess, ret, 0);
 			}
 
 			//将读取的数据传输给客户端
@@ -774,3 +831,4 @@ static void do_quit(session_t *sess)
 {
 	ftp_reply(sess, FTP_GOODBYE, "Goodbye.");
 }
+

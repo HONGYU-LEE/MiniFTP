@@ -203,3 +203,63 @@ int recv_fd(const int sock_fd)
 
 	return recv_fd;
 }
+
+void get_localip(char* ip)
+{
+	char name[MAX_HOST_NAME_SIZE] = { 0 };
+	//获取主机名
+	if(gethostname(name, MAX_HOST_NAME_SIZE) < 0)
+	{
+		ERR_EXIT("gethostname");
+	}
+
+	printf("name name = %s\n", name);
+	//通过主机名获取ip地址
+	struct hostent* ph;
+	ph = gethostbyname(name);
+	if(ph == NULL)
+	{
+		ERR_EXIT("gethostbyname");
+	}
+
+	strcpy(ip, inet_ntoa(*(struct in_addr*)ph->h_addr));
+}
+
+static struct timeval s_cur_time;
+
+void init_cur_time()
+{
+	//获取当前系统的时间
+	if(gettimeofday(&s_cur_time, NULL) < 0)
+	{
+		ERR_EXIT("gettimeofdau");
+	}
+}
+
+long get_time_sec()
+{
+	return s_cur_time.tv_sec;
+}
+
+long get_time_usec()
+{
+	return s_cur_time.tv_usec;
+}
+
+void nano_sleep(double sleep_time)
+{
+	time_t sec = (time_t)sleep_time;//秒数，整数部分
+	double decimal = sleep_time - (double)sec;//纳秒，小数部分
+
+	struct timespec ts;
+	ts.tv_sec = sec;
+	ts.tv_nsec = (long)(decimal * 1000000000);//将小数部分转换为整数
+	
+	int ret;
+
+	do
+	{
+		ret = nanosleep(&ts, &ts);
+	}while(ret == -1 && errno == EINTR);
+	//循环防止休眠被信号所中断
+}

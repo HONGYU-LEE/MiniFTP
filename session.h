@@ -27,6 +27,7 @@ typedef struct session
 	int child_fd;
 
 	/* очкы */
+	unsigned long upload_max_rate;
 	unsigned long download_max_rate;
 	long transfer_start_sec;
 	long transfer_start_usec;
