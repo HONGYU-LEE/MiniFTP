@@ -132,7 +132,8 @@ static void privop_pasv_active(session_t *sess)
 
 static void privop_pasv_listen(session_t *sess)
 {
-	char ip[16] = "192.168.0.128"; //服务器IP地址
+	char ip[16] = { 0 }; //服务器IP地址
+	get_localip(ip);
 	sess->pasv_lst_fd = tcp_server(ip, 0); //端口号给0,会自动分配端口号
 	
 	struct sockaddr_in addr;

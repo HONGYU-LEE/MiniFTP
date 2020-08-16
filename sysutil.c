@@ -221,8 +221,8 @@ void get_localip(char* ip)
 	{
 		ERR_EXIT("gethostbyname");
 	}
-
 	strcpy(ip, inet_ntoa(*(struct in_addr*)ph->h_addr));
+	printf("ip = %s\n", ip);
 }
 
 static struct timeval s_cur_time;

@@ -282,7 +282,8 @@ static void do_port(session_t *sess)
 
 static void do_pasv(session_t *sess)
 {
-	char ip[16] = "192.168.0.128"; //服务器IP地址
+	char ip[16] = { 0 }; //服务器IP地址
+	get_localip(ip);
 
 	//获取监听套接字的端口号
 	priv_sock_send_cmd(sess->child_fd, PRIV_SOCK_PASV_LISTEN);
