@@ -21,6 +21,8 @@ typedef struct session
 	int is_ascii;
 	char *rnfr_name;
 	long long restart_pos;
+	unsigned int num_clients;
+	unsigned int num_per_ip;
 
 	/* 父子进程通道 */
 	int parent_fd;

@@ -10,6 +10,7 @@
 #include<time.h>
 #include<errno.h>
 #include<signal.h>
+#include<sys/wait.h>
 
 #include<sys/socket.h>
 #include<netinet/in.h>
@@ -31,10 +32,14 @@
 #define MAX_BUFFER_SIZE 1024
 #define MAX_COMMAND_LINE 1024
 #define MAX_SETTING_LINE 1024
+
 #define MAX_HOST_NAME_SIZE 1024
 #define MAX_KEY_VALUE_SIZE 128
+
 #define MAX_COMMAND 128
 #define MAX_ARG 128
+
+#define MAX_BUCKETS_SIZE 128
 
 #define ERR_EXIT(msg) \
 	do\

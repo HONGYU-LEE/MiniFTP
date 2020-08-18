@@ -1,25 +1,10 @@
-#include"common"
 #include"hash.h"
+#include"common.h"
 
-typedef struct hash_node
-{
-	void *key;
-	void *value;
-	struct hash_node *prev;
-	struct hash_node *next;
-} hash_node_t;
-
-struct hash
-{
-	unsigned int buckets;
-	hashfunc_t hash_func;
-	hash_node_t **nodes;
-};
-
-hash_t* hash_create(unsigned int buckets, hashfunc_t hash_func)
+hash_t* hash_alloc(unsigned int buckets, hashfunc_t hash_func)
 {
 	hash_t* hash = (hash_t*)malloc(sizeof(hash_t));
-	assert(hash);
+
 
 	hash->buckets = buckets;
 	hash->hash_func = hash_func;
@@ -40,12 +25,12 @@ hash_node_t** hash_get_bucket(hash_t *hash, void *key)
 		exit(EXIT_FAILURE);
 	}
 
-	return hash->nodes[bucket];
+	return &(hash->nodes[bucket]);
 }
 
 hash_node_t* hash_get_node_by_key(hash_t *hash, void *key, unsigned int key_size)
 {
-	hahs_node_t** bucket = hash_get_bucket(hash, key);
+	hash_node_t** bucket = hash_get_bucket(hash, key);
 	hash_node_t* node = *bucket;
 
 	while(node != NULL && memcmp(node->key, key, key_size))
@@ -76,7 +61,7 @@ void hash_add_entry(hash_t *hash, void *key, unsigned int key_size,void *value, 
 		return;
 	}
 
-	hash_node_t* node = (hash_node_t*)malloc(sizeof(hash_node_t);
+	hash_node_t* node = (hash_node_t*)malloc(sizeof(hash_node_t));
 	node->prev = NULL;
 	node->next = NULL;
 
