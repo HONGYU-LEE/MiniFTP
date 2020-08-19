@@ -1,5 +1,7 @@
 #include"ftpproto.h"
 
+session_t* p_sess;
+
 void ftp_reply(session_t* sess, int state, char* msg)
 {
 	char buf[MAX_BUFFER_SIZE] = { 0 };
@@ -35,6 +37,8 @@ static void do_quit(session_t *sess);
 int pasv_active(const session_t* sess);
 int port_active(const session_t* sess);
 
+void start_data_alarm();
+void start_idle_alarm();
 /*
 
 
@@ -121,6 +125,8 @@ void handle_child(session_t* sess)
 		memset(sess->cmdline, 0, MAX_COMMAND_LINE);
 		memset(sess->cmd, 0, MAX_COMMAND);
 		memset(sess->arg, 0, MAX_ARG);
+		
+		start_idle_alarm();//控制连接空闲断开
 
 		//获取命令
 		ret = recv(sess->ctl_fd, sess->cmdline, MAX_COMMAND_LINE, 0);
@@ -410,6 +416,12 @@ int get_transfer_fd(session_t *sess)
 		free(sess->port_addr);
 		sess->port_addr = NULL;
 	}
+	
+	//如果数据连接建立成功，则开启数据连接空闲断开闹钟
+	if(ret)
+	{
+		start_data_alarm();
+	}
 
 	return ret;
 }
@@ -689,7 +701,8 @@ static void do_stor(session_t *sess)
 			ftp_reply(sess, FTP_TRANSFEROK, "Transfer complete.");
 			break;
 		}
-		
+		//设置数据连接状态
+		sess->data_process = 1;
 		//限速
 		if(sess->upload_max_rate != 0)
 		{
@@ -709,6 +722,8 @@ static void do_stor(session_t *sess)
 	close(fd);
 	close(sess->data_fd);
 	sess->data_fd = -1;
+	
+	start_idle_alarm();//重启控制连接断开计时
 }
 
 //下载文件
@@ -793,6 +808,8 @@ static void do_retr(session_t *sess)
 				break;
 			}
 
+			//设置数据连接状态
+			sess->data_process = 1;
 			//限速
 			if(sess->download_max_rate != 0)
 			{
@@ -815,6 +832,8 @@ static void do_retr(session_t *sess)
 	close(fd);
 	close(sess->data_fd);
 	sess->data_fd = -1;
+
+	start_idle_alarm();//重启控制连接断开计时
 }
 
 static void do_rest(session_t *sess)
@@ -831,5 +850,52 @@ static void do_rest(session_t *sess)
 static void do_quit(session_t *sess)
 {
 	ftp_reply(sess, FTP_GOODBYE, "Goodbye.");
+}
+
+void handle_idle_sigalrm(int sig)
+{
+	shutdown(p_sess->ctl_fd, SHUT_RD);//先关闭读端，回复完响应码后再关闭写端
+	ftp_reply(p_sess, FTP_IDLE_TIMEOUT, "Timeout.");
+	shutdown(p_sess->ctl_fd, SHUT_WR);
+	exit(EXIT_SUCCESS);
+}
+
+void start_idle_alarm()
+{
+	if(tunable_idle_session_timeout != 0)
+	{
+		signal(SIGALRM, handle_idle_sigalrm);
+		alarm(tunable_idle_session_timeout);
+	}
+}
+
+void handle_data_sigalrm(int sig)
+{
+	//如果当前没有在传输，则断开连接
+	if(p_sess->data_process == 0)
+	{
+		ftp_reply(p_sess, FTP_DATA_TIMEOUT, "Data timeout. Reconnect Sorry.");
+		exit(EXIT_FAILURE);
+	}
+	//如果当前在传输，则忽略本次，重新启动闹钟
+	else
+	{
+		p_sess->data_process = 0;
+		start_data_alarm();
+	}
+}
+
+void start_data_alarm()
+{
+	if(tunable_data_connection_timeout != 0)
+	{
+		signal(SIGALRM, handle_data_sigalrm);
+		alarm(tunable_data_connection_timeout);
+	}
+	//停止控制连接的计时
+	else if(tunable_idle_session_timeout > 0)
+	{
+		alarm(0);
+	}
 }
 

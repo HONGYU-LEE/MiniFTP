@@ -9,6 +9,7 @@ extern unsigned int tunable_accept_timeout;				//Accept超时间
 extern unsigned int tunable_connect_timeout;			//Connect超时间
 extern unsigned int tunable_idle_session_timeout;		//控制连接超时时间
 extern unsigned int tunable_data_connection_timeout;	//数据连接超时时间
+extern unsigned int tunable_chown_uploads;				//上传文件的权限掩码
 extern unsigned int tunable_local_umask;				//掩码
 extern unsigned int tunable_upload_max_rate;			//最大上传速度
 extern unsigned int tunable_download_max_rate;			//最大下载速度

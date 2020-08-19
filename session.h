@@ -16,6 +16,7 @@ typedef struct session
 	struct sockaddr_in* port_addr;
 	int data_fd;
 	int pasv_lst_fd;
+	int data_process;
 
 	/* Ğ­Òé×´Ì¬ */
 	int is_ascii;

@@ -28,6 +28,7 @@ static struct parseconf_uint_setting
 	{"connect_timeout", &tunable_connect_timeout},
 	{"idle_session_timeout", &tunable_idle_session_timeout},
 	{"data_connection_timeout", &tunable_data_connection_timeout},
+	{"chown_uploads", &tunable_chown_uploads},
 	{"local_umask", &tunable_local_umask},
 	{"upload_max_rate", &tunable_upload_max_rate},
 	{"download_max_rate", &tunable_download_max_rate}
@@ -144,6 +145,7 @@ void parseconf_test()
 	printf("tunable_connect_timeout = %d\n", tunable_connect_timeout);
 	printf("tunable_idle_session_timeout = %d\n", tunable_idle_session_timeout);
 	printf("tunable_data_connection_timeout = %d\n", tunable_data_connection_timeout);
+	printf("tunable_chown_uploads = %d\n", tunable_chown_uploads);
 	printf("tunable_loacl_umask = %d\n", tunable_local_umask);
 	printf("tunable_upload_max_rate = %d\n", tunable_upload_max_rate);
 	printf("tunable_download_mas_rate = %d\n", tunable_download_max_rate);

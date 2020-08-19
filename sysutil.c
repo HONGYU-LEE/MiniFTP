@@ -213,7 +213,6 @@ void get_localip(char* ip)
 		ERR_EXIT("gethostname");
 	}
 
-	printf("name name = %s\n", name);
 	//通过主机名获取ip地址
 	struct hostent* ph;
 	ph = gethostbyname(name);
@@ -222,7 +221,6 @@ void get_localip(char* ip)
 		ERR_EXIT("gethostbyname");
 	}
 	strcpy(ip, inet_ntoa(*(struct in_addr*)ph->h_addr));
-	printf("ip = %s\n", ip);
 }
 
 static struct timeval s_cur_time;

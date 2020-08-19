@@ -11,15 +11,20 @@ static unsigned int s_client_count;//当前连接数
 static hash_t* s_ip_count_hash;//建立ip与连接数的映射
 static hash_t* s_pid_ip_hash;//建立pid与ip的映射
 
+extern session_t* p_sess;
+
 void check_limit(session_t* sess);
 unsigned int add_ip_count(void* ip);
 void drop_ip_count(void* ip);
-void handle_sigchild(int sig);
+void handle_sigchld(int sig);
 unsigned int hash_func(unsigned int buckets, void* key);
 
 int main(int agrc, char* argv[])
 {
-	parseconf_test();
+	parseconf_load_file("MiniFTP.conf");//加载配置文件
+	daemon(0, 0);//转入后台
+	
+	
 	if(getuid() != 0)
 	{
 		perror("MiniFTP 1.0 : It must be started by root.\n");
@@ -29,7 +34,7 @@ int main(int agrc, char* argv[])
 						/* 控制连接*/
 						-1, -1, "", "", "",
 						/* 数据连接 */
-						NULL, -1, -1,
+						NULL, -1, -1, 0,
 						/* 协议状态 */
 						1, NULL, 0, 0, 0,
 						/* 父子进程通道 */
@@ -37,11 +42,13 @@ int main(int agrc, char* argv[])
 						/* 限速 */
 						0, 0, 0, 0
 					 };
+	p_sess = &sess;
+		
 	//注册进程终止信号SIGCHLD的处理函数
-	signal(SIGCHLD, handle_sigchild);
+	signal(SIGCHLD, handle_sigchld);
 	
-	//设置限速
-	sess.upload_max_rate = tunable_upload_max_rate;
+	
+	sess.upload_max_rate = tunable_upload_max_rate;//设置限速
 	sess.download_max_rate = tunable_download_max_rate;
 	
 	s_ip_count_hash = hash_alloc(MAX_BUCKETS_SIZE, hash_func);//建立ip与连接数的映射
@@ -117,7 +124,7 @@ void check_limit(session_t* sess)
 	}
 }
 
-void handle_sigchild(int sig)
+void handle_sigchld(int sig)
 {
 	pid_t pid;
 	while((pid = waitpid(-1, NULL, WNOHANG)) > 0)
