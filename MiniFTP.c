@@ -22,7 +22,7 @@ unsigned int hash_func(unsigned int buckets, void* key);
 int main(int agrc, char* argv[])
 {
 	parseconf_load_file("MiniFTP.conf");//加载配置文件
-	daemon(0, 0);//转入后台
+	//daemon(0, 0);//转入后台
 	
 	
 	if(getuid() != 0)
@@ -85,7 +85,6 @@ int main(int agrc, char* argv[])
 		//子进程
 		if(pid == 0)
 		{
-			
 			close(lst_sock);
 			sess.ctl_fd = new_sock;
 			
@@ -109,6 +108,9 @@ int main(int agrc, char* argv[])
 	return 0;
 }
 
+
+/////////////////////////////////////////////////////
+/*					访问控制					   */
 void check_limit(session_t* sess)
 {
 	if(tunable_max_clients != 0 && sess->num_clients > tunable_max_clients)

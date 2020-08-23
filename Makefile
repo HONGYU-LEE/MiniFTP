@@ -11,4 +11,4 @@ $(BIN):$(OBJS)
 
 .PHONY:clean
 clean:
-	rm -fr *.o //$(BIN)
+	rm -fr *.o $(BIN)

@@ -52,7 +52,9 @@ void parseconf_load_setting(const char *setting)
 	str_split(setting, key, value, '=');
 
 	int list_size = sizeof(parseconf_str_array) / sizeof(struct parseconf_str_setting);
-	for(int i = 0; i < list_size; i++)
+
+	int i;
+	for(i = 0; i < list_size; i++)
 	{
 		if(strcmp(key, parseconf_str_array[i].p_setting_name) == 0)
 		{
@@ -69,7 +71,7 @@ void parseconf_load_setting(const char *setting)
 	}
 
 	list_size = sizeof(parseconf_bool_array) / sizeof(struct parseconf_bool_setting);
-	for(int i = 0; i < list_size; i++)
+	for(i = 0; i < list_size; i++)
 	{
 		if(strcmp(key, parseconf_bool_array[i].p_setting_name) == 0)
 		{
@@ -94,7 +96,7 @@ void parseconf_load_setting(const char *setting)
 	}
 
 	list_size = sizeof(parseconf_uint_array) / sizeof(struct parseconf_uint_setting);
-	for(int i = 0; i < list_size; i++)
+	for(i = 0; i < list_size; i++)
 	{
 		if(strcmp(key, parseconf_uint_array[i].p_setting_name) == 0)
 		{

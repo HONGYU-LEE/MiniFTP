@@ -32,28 +32,13 @@ static void do_stor(session_t *sess);
 static void do_rest(session_t *sess); 
 static void do_quit(session_t *sess); 
 
-
-
 int pasv_active(const session_t* sess);
 int port_active(const session_t* sess);
 
 void start_data_alarm();
 void start_idle_alarm();
-/*
 
 
-//static void do_stru(session_t *sess); 
-//static void do_mode(session_t *sess); 
-static void do_appe(session_t *sess); 
-static void do_nlst(session_t *sess); 
-
-static void do_abor(session_t *sess); 
-static void do_site(session_t *sess); 
- 
-static void do_stat(session_t *sess); 
-static void do_noop(session_t *sess); 
-static void do_help(session_t *sess);
-*/
 //命令映射表
 typedef struct ftpcmd
 {
@@ -65,14 +50,15 @@ static ftpcmd_t ctl_cmds[] =
 {
 	{"USER", do_user },
 	{"PASS", do_pass },
-	{"SYST", do_syst },
-	{"FEAT", do_feat },
 	{"PWD" , do_pwd  },
-	{"TYPE", do_type },
-	{"LIST", do_list },
+	{"CWD" , do_cwd  },
+	{"QUIT", do_quit },
 	{"PORT", do_port },
 	{"PASV", do_pasv },
-	{"CWD" , do_cwd  },
+	{"TYPE", do_type },
+	{"SYST", do_syst },
+	{"FEAT", do_feat },
+	{"LIST", do_list },
 	{"MKD" , do_mkd  },
 	{"RMD" , do_rmd	 },
 	{"DELE", do_dele },
@@ -83,36 +69,7 @@ static ftpcmd_t ctl_cmds[] =
 	{"STOR", do_stor },
 	{"CDUP", do_cdup },
 	{"REST", do_rest },
-	{"QUIT", do_quit },
-	/*
-	,
 
-	,
-	
-	{"ACCT", NULL },
-	{"SMNT", NULL },
-	{"REIN", NULL },
-	//传输参数命令 
-	//{"STRU", do_struNULL },
-	//{"MODE", do_modeNULL },
-	{"SITE", do_site },
-	//服务命令
-	{"APPE", do_appe },
-	{"NLST", do_nlst },
-	
-	{"ABOR", do_abor },
-	{"\377\364\377\362ABOR", do_abor},
-	{"XPWD", do_pwd },
-	{"XMKD", do_mkd },
-	{"XRMD", do_rmd },
-	{"STAT", do_stat },
-	{"NOOP", do_noop },
-	{"HELP", do_help },
-		{"XCWD", do_cwd  },
-	{"XCUP", do_cdup },
-	{"STOU", NULL },
-	{"ALLO", NULL }
-	*/
 };
 
 void handle_child(session_t* sess)
@@ -169,6 +126,9 @@ void handle_child(session_t* sess)
 	}
 }
 
+
+/////////////////////////////////////////////////////
+/*					访问控制					   */
 static void do_user(session_t* sess)
 {
 	struct passwd* pwd = getpwnam(sess->arg);
@@ -261,6 +221,8 @@ static void do_type(session_t *sess)
 	}
 }
 
+/////////////////////////////////////////////////////
+/*					数据连接					   */
 static void do_port(session_t *sess)
 {
 	//解析IP地址 例如: PORT 192,168,1,128,5,35
@@ -426,6 +388,8 @@ int get_transfer_fd(session_t *sess)
 	return ret;
 }
 
+/////////////////////////////////////////////////////
+/*					列表显示					   */
 static void list_common(session_t *sess)
 {
 	//打开工作目录
@@ -496,6 +460,8 @@ static void do_list(session_t *sess)
 	ftp_reply(sess, FTP_TRANSFEROK, "Directory send OK.");
 }
 
+/////////////////////////////////////////////////////
+/*					服务命令					   */
 static void do_cwd(session_t *sess)
 {
 	if(chdir(sess->arg) < 0)
@@ -611,6 +577,13 @@ static void do_size(session_t *sess)
 	ftp_reply(sess, FTP_SIZEOK, buf);
 }
 
+static void do_quit(session_t *sess)
+{
+	ftp_reply(sess, FTP_GOODBYE, "Goodbye.");
+}
+
+/////////////////////////////////////////////////////
+/*					数据传输					   */
 static void limit_rate(session_t *sess, int bytes_transfered, int is_upload)
 {
 	init_cur_time();
@@ -847,11 +820,8 @@ static void do_rest(session_t *sess)
 	ftp_reply(sess, FTP_RESTOK, msg);
 }
 
-static void do_quit(session_t *sess)
-{
-	ftp_reply(sess, FTP_GOODBYE, "Goodbye.");
-}
-
+/////////////////////////////////////////////////////
+/*					空闲断开					   */
 void handle_idle_sigalrm(int sig)
 {
 	shutdown(p_sess->ctl_fd, SHUT_RD);//先关闭读端，回复完响应码后再关闭写端
