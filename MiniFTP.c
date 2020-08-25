@@ -121,6 +121,13 @@ int main(int agrc, char* argv[])
 
 /////////////////////////////////////////////////////
 /*					访问控制					   */
+
+//除留余数法
+unsigned int hash_func(unsigned int buckets, void* key)
+{
+	return (*(unsigned int*)key % buckets);
+}
+
 void check_limit(session_t* sess)
 {
 	if(tunable_max_clients != 0 && sess->num_clients > tunable_max_clients)
@@ -191,8 +198,3 @@ void drop_ip_count(void* ip)
 	}
 }
 
-//除留余数法
-unsigned int hash_func(unsigned int buckets, void* key)
-{
-	return (*(unsigned int*)key % buckets);
-}
