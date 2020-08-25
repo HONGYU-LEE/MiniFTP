@@ -1,4 +1,4 @@
-<h1 align=center> MiniFTP 项目 开发日志 </h1>
+<h1 align=center> MiniFTP 开发日志 </h1>
 
 [TOC]
 
@@ -1858,7 +1858,7 @@
 
 ------------------------
 
-# 2020_08_13
+# 2020_08_14
 
 ## 一、实现配置文件解析
 
@@ -2053,3 +2053,252 @@
 > ```
 
 -----------------------------------------------------
+
+# 2020_08_15
+
+## 一、实现限速以及服务器ip获取自动获取功能
+
+> 限速的功能主要就是通过比较速率后进行休眠来达到速度控制的效果，但是系统函数sleep()与alarm()函数存在冲突，并且sleep()的休眠时间只能精确到秒，所以需要使用nanosleep()来进行替换，并且提供获取当前系统时间的接口
+>
+> ```c
+> void init_cur_time()
+> {
+> 	//获取当前系统的时间
+> 	if(gettimeofday(&s_cur_time, NULL) < 0)
+> 	{
+> 		ERR_EXIT("gettimeofdau");
+> 	}
+> }
+> 
+> long get_time_sec()
+> {
+> 	return s_cur_time.tv_sec;
+> }
+> 
+> long get_time_usec()
+> {
+> 	return s_cur_time.tv_usec;
+> }
+> 
+> void nano_sleep(double sleep_time)
+> {
+> 	time_t sec = (time_t)sleep_time;//秒数，整数部分
+> 	double decimal = sleep_time - (double)sec;//纳秒，小数部分
+> 
+> 	struct timespec ts;
+> 	ts.tv_sec = sec;
+> 	ts.tv_nsec = (long)(decimal * 1000000000);//将小数部分转换为整数
+> 	
+> 	int ret;
+> 	do
+> 	{
+> 		ret = nanosleep(&ts, &ts);
+> 	}while(ret == -1 && errno == EINTR);
+> 	//循环防止休眠被信号所中断
+> }
+> ```
+>
+> ### 限速
+>
+> ```c
+> static void limit_rate(session_t *sess, int bytes_transfered, int is_upload)
+> {
+> 	init_cur_time();
+> 	long cur_sec = get_time_sec();
+> 	long cur_usec = get_time_usec();
+> 
+> 	double pass_time = (double)(cur_sec - sess->transfer_start_sec);//先计算秒数
+> 	pass_time += (double)(cur_usec - sess->transfer_start_usec) / (double)1000000;//计算微秒部分
+> 
+> 	if(pass_time <= (double)0) 
+> 	{
+> 		//等于0的情况有可能，因为传的太快了
+> 		pass_time = (double)0.01;
+> 	}
+> 
+> 	unsigned long cur_rate = (unsigned long)((double)bytes_transfered / pass_time);//计算当前速度
+> 	unsigned long max_rate = (is_upload == 1) ? sess->upload_max_rate : sess->download_max_rate;
+> 	
+> 	//如果当前速度大于最大速度，则需要进行休眠来限速
+> 	if(cur_rate > max_rate)
+> 	{
+> 		//睡眠时间 = (当前传输速度 / 最大传输速度 - 1) * 传输时间 = 速率查 * 传输时间 
+> 		double rate_ratio = cur_rate / max_rate;//速率差
+> 		double sleep_time = (rate_ratio - (double)1) * pass_time;
+> 
+> 		nano_sleep(sleep_time);
+> 	}
+> 	
+> 	
+> 	//更新时间
+> 	init_cur_time();
+> 	sess->transfer_start_sec = get_time_sec();
+> 	sess->transfer_start_usec = get_time_usec();
+> }
+> ```
+>
+> 
+>
+> ### 服务器IP获取
+>
+> ```c
+> void get_localip(char* ip)
+> {
+> 	char name[MAX_HOST_NAME_SIZE] = { 0 };
+> 	//获取主机名
+> 	if(gethostname(name, MAX_HOST_NAME_SIZE) < 0)
+> 	{
+> 		ERR_EXIT("gethostname");
+> 	}
+> 
+> 	//通过主机名获取ip地址
+> 	struct hostent* ph;
+> 	ph = gethostbyname(name);
+> 	if(ph == NULL)
+> 	{
+> 		ERR_EXIT("gethostbyname");
+> 	}
+> 	strcpy(ip, inet_ntoa(*(struct in_addr*)ph->h_addr));
+> }
+> ```
+
+-------------------------------------
+
+# 2020_08_19
+
+## 一、实现连接数限制功能
+
+>通过哈希表建立pid与ip地址的映射，ip地址与连接数的映射，来实现最大连接数、每ip连接数的限制
+>
+>```c
+>void check_limit(session_t* sess)
+>{
+>	if(tunable_max_clients != 0 && sess->num_clients > tunable_max_clients)
+>	{
+>		ftp_reply(sess, FTP_TOO_MANY_USERS, "There are too many connected users, please try later.");
+>		exit(EXIT_FAILURE);
+>	}
+>
+>	if(tunable_max_per_ip != 0 && sess->num_per_ip > tunable_max_per_ip)
+>	{
+>		ftp_reply(sess, FTP_IP_LIMIT, "There are too many connections from your internet address.");
+>		exit(EXIT_FAILURE);
+>	}
+>}
+>
+>void handle_sigchld(int sig)
+>{
+>	pid_t pid;
+>	while((pid = waitpid(-1, NULL, WNOHANG)) > 0)
+>	{
+>		--s_client_count;
+>		
+>		unsigned int* ip = hash_lookup_entry(s_pid_ip_hash, &pid, sizeof(pid));//获取pid对应ip地址
+>		if(ip == NULL)
+>		{
+>			continue;//获取失败，再次获取
+>		}
+>
+>		drop_ip_count(ip);//减少该ip地址的连接数
+>		hash_free_entry(s_pid_ip_hash, &pid, sizeof(pid));//释放该节点
+>
+>	}
+>}
+>
+>unsigned int add_ip_count(void* ip)
+>{
+>	unsigned count = 0;
+>	unsigned int *p_count = hash_lookup_entry(s_ip_count_hash, ip, sizeof(unsigned int));//查找该ip的连接数
+>
+>	//如果找不到，则说明是该ip是第一次连接，创建新节点
+>	if(p_count == NULL)
+>	{
+>		count = 1;
+>		hash_add_entry(s_ip_count_hash, ip, sizeof(unsigned int), &count, sizeof(unsigned int));
+>	}
+>	else
+>	{
+>		++(*p_count);
+>		count = *p_count;
+>	}
+>
+>	return count;
+>}
+>
+>void drop_ip_count(void* ip)
+>{
+>	unsigned int* p_count = hash_lookup_entry(s_ip_count_hash, ip, sizeof(unsigned int));//查找该ip的连接数
+>	if(p_count == NULL)
+>	{
+>		return;
+>	}
+>
+>	//对应ip的连接数-1，如果为0则说明该ip无连接，释放节点
+>	--(*p_count);
+>	
+>	if(*p_count == 0)
+>	{
+>        hash_free_entry(s_ip_count_hash, ip, sizeof(unsigned int));
+>	}
+>}
+>```
+
+----------------------------------------
+
+# 2020_08_21
+
+## 一、实现空闲断开的功能
+
+> 通过alarm函数来设置闹钟信号sigalrm来进行计时，并注册控制连接和数据连接的超时处理方法
+>
+> ```c
+> void handle_idle_sigalrm(int sig)
+> {
+> 	shutdown(p_sess->ctl_fd, SHUT_RD);//先关闭读端，回复完响应码后再关闭写端
+> 	ftp_reply(p_sess, FTP_IDLE_TIMEOUT, "Timeout.");
+> 	shutdown(p_sess->ctl_fd, SHUT_WR);
+> 	exit(EXIT_SUCCESS);
+> }
+> 
+> void start_idle_alarm()
+> {
+> 	if(tunable_idle_session_timeout != 0)
+> 	{
+> 		signal(SIGALRM, handle_idle_sigalrm);
+> 		alarm(tunable_idle_session_timeout);
+> 	}
+> }
+> 
+> void handle_data_sigalrm(int sig)
+> {
+> 	//如果当前没有在传输，则断开连接
+> 	if(p_sess->data_process == 0)
+> 	{
+> 		ftp_reply(p_sess, FTP_DATA_TIMEOUT, "Data timeout. Reconnect Sorry.");
+> 		exit(EXIT_FAILURE);
+> 	}
+> 	//如果当前在传输，则忽略本次，重新启动闹钟
+> 	else
+> 	{
+> 		p_sess->data_process = 0;
+> 		start_data_alarm();
+> 	}
+> }
+> 
+> void start_data_alarm()
+> {
+> 	if(tunable_data_connection_timeout != 0)
+> 	{
+> 		signal(SIGALRM, handle_data_sigalrm);
+> 		alarm(tunable_data_connection_timeout);
+> 	}
+> 	//停止控制连接的计时
+> 	else if(tunable_idle_session_timeout > 0)
+> 	{
+> 		alarm(0);
+> 	}
+> }
+> ```
+
+-----------------------------------
+
