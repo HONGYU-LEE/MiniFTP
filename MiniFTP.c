@@ -22,12 +22,12 @@ unsigned int hash_func(unsigned int buckets, void* key);
 int main(int agrc, char* argv[])
 {
 	parseconf_load_file("MiniFTP.conf");//加载配置文件
-	//daemon(0, 0);//转入后台
+	daemon(0, 0);//转入后台
 	
 	
 	if(getuid() != 0)
 	{
-		perror("MiniFTP 1.0 : It must be started by root.\n");
+		perror("MiniFTP: It must be started by root.\n");
 		exit(EXIT_FAILURE);
 	}
 	session_t sess = {  
@@ -53,9 +53,19 @@ int main(int agrc, char* argv[])
 	
 	s_ip_count_hash = hash_alloc(MAX_BUCKETS_SIZE, hash_func);//建立ip与连接数的映射
 	s_pid_ip_hash = hash_alloc(MAX_BUCKETS_SIZE, hash_func);//建立pid与ip的映射
+	
+	//如果没有配置ip地址，则自动获取
+	char ip[16] = { 0 };
+	if(tunable_listen_address == NULL)
+	{
+		get_localip(ip);
+	}
+	else 
+	{
+		strcpy(ip, tunable_listen_address);
+	}
 
-
-	int lst_sock = tcp_server(tunable_listen_address, tunable_listen_port); 
+	int lst_sock = tcp_server(ip, tunable_listen_port); 
 	int new_sock;
 	struct sockaddr_in addr;
 	socklen_t addrlen;
@@ -141,7 +151,6 @@ void handle_sigchld(int sig)
 
 		drop_ip_count(ip);//减少该ip地址的连接数
 		hash_free_entry(s_pid_ip_hash, &pid, sizeof(pid));//释放该节点
-
 	}
 }
 

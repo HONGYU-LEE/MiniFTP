@@ -38,7 +38,6 @@ int port_active(const session_t* sess);
 void start_data_alarm();
 void start_idle_alarm();
 
-
 //√¸¡Ó”≥…‰±Ì
 typedef struct ftpcmd
 {
@@ -69,7 +68,6 @@ static ftpcmd_t ctl_cmds[] =
 	{"STOR", do_stor },
 	{"CDUP", do_cdup },
 	{"REST", do_rest },
-
 };
 
 void handle_child(session_t* sess)
