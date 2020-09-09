@@ -1,4 +1,4 @@
-# MiniFTP
+# MiniFTP / FTP服务器
 ## 开发语言
 C/C++
 ## 开发环境
