@@ -12,7 +12,7 @@ MiniFTP是一个FTP服务器软件，通过使用MiniFTP能够快速的将任何
 - 实现控制连接和数据连接的空闲断开，缓解了服务器的压力。
 - 通过哈希表实现最大连接数、每ip连接数的限制，防止大量的恶意访问。
 ## 架构介绍与难点解析
-https://github.com/HONGYU-LEE/MiniFTP/blob/master/doc/%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D%E5%92%8C%E9%9A%BE%E7%82%B9%E5%88%86%E6%9E%90.md
+[架构介绍与难点解析](https://github.com/HONGYU-LEE/MiniFTP/blob/master/doc/%E6%9E%B6%E6%9E%84%E4%BB%8B%E7%BB%8D%E5%92%8C%E9%9A%BE%E7%82%B9%E5%88%86%E6%9E%90.md)
 ## 使用实例
 这里借助Windows下的FTP客户端LeapFTP来进行演示
 连接
